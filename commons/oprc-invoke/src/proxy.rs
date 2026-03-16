@@ -119,7 +119,11 @@ impl ObjectProxy {
             "oprc/{}/{}/objects/{}",
             meta.cls_id, meta.partition_id, object_id
         );
-        self.call_zenoh(legacy, None, try_decode).await
+        match self.call_zenoh(legacy, None, try_decode).await {
+            Ok(data) => Ok(data),
+            Err(ProxyError::ReplyError(_)) => Ok(None),
+            Err(e) => Err(e),
+        }
     }
 
     pub async fn set_obj(
@@ -280,8 +284,9 @@ impl ObjectProxy {
             Ok(sample) => {
                 decode(sample.payload()).map_err(ProxyError::DecodeError)
             }
-            Err(reply_err) => decode(reply_err.payload())
-                .map_err(ProxyError::DecodeError),
+            Err(reply_err) => {
+                decode(reply_err.payload()).map_err(ProxyError::DecodeError)
+            }
         }
     }
 
@@ -347,8 +352,9 @@ impl ObjectProxy {
             Ok(sample) => {
                 decode(sample.payload()).map_err(ProxyError::DecodeError)
             }
-            Err(reply_err) => decode(reply_err.payload())
-                .map_err(ProxyError::DecodeError),
+            Err(reply_err) => {
+                decode(reply_err.payload()).map_err(ProxyError::DecodeError)
+            }
         }
     }
 

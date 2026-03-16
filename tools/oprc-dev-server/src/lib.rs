@@ -8,8 +8,9 @@ use std::time::Duration;
 
 use axum::Router;
 use config::{DevServerConfig, package_to_create_requests};
-use oprc_odgm::{ObjectDataGridManager, OdgmConfig};
+use oprc_odgm::{EventPipelineConfig, ObjectDataGridManager, OdgmConfig};
 use oprc_zenoh::pool::Pool;
+use std::time::Duration as StdDuration;
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
@@ -20,6 +21,11 @@ pub async fn start(config: DevServerConfig) -> anyhow::Result<()> {
     // 1. Create Zenoh session in peer mode (loopback, no external peers)
     let z_config = oprc_zenoh::OprcZenohConfig::default();
 
+    // Enable ODGM → Zenoh event publishing so the Gateway WebSocket bridge
+    // receives state-change events.  ODGM and Gateway share the same process,
+    // so SessionLocal locality keeps events in-process without network overhead.
+    let event_pipeline_config = EventPipelineConfig::with_local_publish();
+
     // 2. Start ODGM (creates Pool, MetaManager, ShardManager, watch stream)
     let odgm_config = OdgmConfig {
         http_port: port,
@@ -27,10 +33,13 @@ pub async fn start(config: DevServerConfig) -> anyhow::Result<()> {
         members: Some("1".into()),
         ..Default::default()
     };
-    let (odgm, session_pool) =
-        oprc_odgm::start_raw_server(&odgm_config, Some(z_config))
-            .await
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
+    let (odgm, session_pool) = oprc_odgm::start_raw_server_with_pipeline(
+        &odgm_config,
+        Some(z_config),
+        Some(event_pipeline_config),
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("{}", e))?;
     let odgm = Arc::new(odgm);
 
     // 3. Create collections from OPackage classes
@@ -112,7 +121,7 @@ async fn build_dev_router(
     let gateway = oprc_gateway::build_router(
         z_session.clone(),
         Duration::from_secs(30),
-        false,
+        true, // Enable WebSocket event subscriptions
     );
 
     // Strip /api/gateway prefix for frontend compatibility:
@@ -122,10 +131,12 @@ async fn build_dev_router(
     // Stub PM API for frontend (/api/v1/deployments, etc.)
     let stub = stub_api::build_stub_api(&config.package);
 
-    let router = gateway
-        .merge(gateway_proxy)
-        .merge(stub)
-        .layer(CorsLayer::permissive());
+    let router = gateway.merge(gateway_proxy).merge(stub).layer(
+        CorsLayer::permissive()
+            // Cache preflight for 1 hour — prevents Chrome from sending
+            // an OPTIONS request before every single API call.
+            .max_age(StdDuration::from_secs(3600)),
+    );
 
     // Frontend fallback (embedded static files)
     #[cfg(feature = "frontend")]

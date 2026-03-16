@@ -4,11 +4,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+/// Key used by the real ODGM to store the whole-object blob as a granular entry.
+const RAW_ENTRY_KEY: &str = "_raw";
+
 #[derive(Default, Clone)]
 pub struct MockDataOps {
-    // collection -> object_id -> data  (whole-object storage)
-    objects: Arc<RwLock<HashMap<String, HashMap<String, Vec<u8>>>>>,
     // (collection, object_id) -> (key -> data)  (granular per-field storage)
+    // Whole-object get/set use the "_raw" key, matching real ODGM behaviour.
     entries: Arc<RwLock<HashMap<(String, String), HashMap<String, Vec<u8>>>>>,
 }
 
@@ -20,9 +22,10 @@ impl OdgmDataOps for MockDataOps {
         _part: u32,
         obj_id: &str,
     ) -> Result<Option<Vec<u8>>, DataOpsError> {
-        let guard = self.objects.read().await;
-        if let Some(col) = guard.get(cls_id) {
-            Ok(col.get(obj_id).cloned())
+        let guard = self.entries.read().await;
+        let k = (cls_id.to_string(), obj_id.to_string());
+        if let Some(fields) = guard.get(&k) {
+            Ok(fields.get(RAW_ENTRY_KEY).cloned())
         } else {
             Ok(None)
         }
@@ -35,9 +38,10 @@ impl OdgmDataOps for MockDataOps {
         obj_id: &str,
         data: Vec<u8>,
     ) -> Result<(), DataOpsError> {
-        let mut guard = self.objects.write().await;
-        let col = guard.entry(cls_id.to_string()).or_default();
-        col.insert(obj_id.to_string(), data);
+        let mut guard = self.entries.write().await;
+        let k = (cls_id.to_string(), obj_id.to_string());
+        let fields = guard.entry(k).or_default();
+        fields.insert(RAW_ENTRY_KEY.to_string(), data);
         Ok(())
     }
 
@@ -47,13 +51,8 @@ impl OdgmDataOps for MockDataOps {
         _part: u32,
         obj_id: &str,
     ) -> Result<(), DataOpsError> {
-        let mut guard = self.objects.write().await;
-        if let Some(col) = guard.get_mut(cls_id) {
-            col.remove(obj_id);
-        }
-        // Also remove all granular entries
-        let mut entries = self.entries.write().await;
-        entries.remove(&(cls_id.to_string(), obj_id.to_string()));
+        let mut guard = self.entries.write().await;
+        guard.remove(&(cls_id.to_string(), obj_id.to_string()));
         Ok(())
     }
 

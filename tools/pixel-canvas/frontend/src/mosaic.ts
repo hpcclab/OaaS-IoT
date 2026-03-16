@@ -7,7 +7,7 @@
 
 import { CANVAS_SIZE } from "./types.js";
 import type { PixelMap } from "./types.js";
-import { fetchCanvas, invokeGolStep } from "./api.js";
+import { fetchCanvas, invokeGolStep, subscribeToPartition } from "./api.js";
 import type { FetchResult } from "./api.js";
 import { renderPixels } from "./render.js";
 import { AudienceCanvas } from "./canvas.js";
@@ -21,7 +21,7 @@ export class PresenterMosaic {
   /** pixelMaps[x][y] = Map<"px:py", color> */
   private readonly pixelMaps: PixelMap[][];
 
-  private pollInterval: ReturnType<typeof setInterval> | null = null;
+  private wsSub: { destroy: () => void } | null = null;
   private activeEditor: AudienceCanvas | null = null;
   private canvases: { el: HTMLCanvasElement; x: number; y: number }[] = [];
 
@@ -56,7 +56,7 @@ export class PresenterMosaic {
 
     this.buildUI(container);
     this.fetchAll();
-    this.startPolling();
+    this.startWebSocket();
   }
 
   private buildUI(container: HTMLElement): void {
@@ -157,8 +157,24 @@ export class PresenterMosaic {
     }
   }
 
-  private startPolling(): void {
-    this.pollInterval = setInterval(() => this.fetchAll(), 1000);
+  private startWebSocket(): void {
+    this.wsSub = subscribeToPartition(this.gatewayBase, (evt) => {
+      // Parse tile coordinates from object_id (format: "canvas-{x}-{y}")
+      const m = evt.object_id.match(/^canvas-(\d+)-(\d+)$/);
+      if (!m) return;
+      const x = parseInt(m[1], 10);
+      const y = parseInt(m[2], 10);
+      if (x >= this.cols || y >= this.rows) return;
+      // Refresh only the affected tile
+      fetchCanvas(this.gatewayBase, x, y).then((result) => {
+        if (!result.ok) return;
+        this.pixelMaps[x][y] = result.pixels;
+        const el = this.canvasEl(x, y);
+        if (el) renderPixels(el, result.pixels, this.cellSize);
+        this.statusEl.textContent = `● live — ${new Date().toLocaleTimeString()}`;
+        this.statusEl.style.color = "#22c55e";
+      });
+    });
   }
 
   private openEditor(x: number, y: number): void {
@@ -229,7 +245,7 @@ export class PresenterMosaic {
   }
 
   destroy(): void {
-    if (this.pollInterval !== null) clearInterval(this.pollInterval);
+    this.wsSub?.destroy();
     this.stopAutoRun();
     this.activeEditor?.destroy();
   }

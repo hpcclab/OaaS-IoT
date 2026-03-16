@@ -7,7 +7,7 @@
 
 import { CANVAS_SIZE, CELL_PX } from "./types.js";
 import type { PixelMap } from "./types.js";
-import { fetchCanvas, saveCanvas } from "./api.js";
+import { fetchCanvas, paintBatch, subscribeToObject } from "./api.js";
 import { renderPixels } from "./render.js";
 
 export class AudienceCanvas {
@@ -21,7 +21,7 @@ export class AudienceCanvas {
   private isDrawing = false;
   private currentColor = "#000000";
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
-  private pollInterval: ReturnType<typeof setInterval> | null = null;
+  private wsSub: { destroy: () => void } | null = null;
 
   private canvasEl!: HTMLCanvasElement;
   private colorPicker!: HTMLInputElement;
@@ -39,8 +39,8 @@ export class AudienceCanvas {
 
     this.buildUI(container);
     this.attachEvents();
-    this.startPolling();
     this.fetchAndRender();
+    this.startWebSocket();
   }
 
   private buildUI(container: HTMLElement): void {
@@ -133,8 +133,14 @@ export class AudienceCanvas {
   private async flush(): Promise<void> {
     if (this.dirty.size === 0) return;
     const savedDirty = new Set(this.dirty);
+    // Build a map of only the dirty pixels to send via paintBatch
+    const dirtyPixels: Map<string, string> = new Map();
+    for (const key of savedDirty) {
+      const color = this.pixels.get(key);
+      if (color !== undefined) dirtyPixels.set(key, color);
+    }
     this.dirty.clear();
-    const ok = await saveCanvas(this.gatewayBase, this.gridX, this.gridY, this.pixels);
+    const ok = await paintBatch(this.gatewayBase, this.gridX, this.gridY, dirtyPixels);
     if (ok) {
       this.setStatus(true, "saved");
     } else {
@@ -164,12 +170,17 @@ export class AudienceCanvas {
     this.setStatus(true, "synced");
   }
 
-  private startPolling(): void {
-    this.pollInterval = setInterval(() => this.fetchAndRender(), 2000);
+  private startWebSocket(): void {
+    this.wsSub = subscribeToObject(
+      this.gatewayBase,
+      this.gridX,
+      this.gridY,
+      () => this.fetchAndRender()
+    );
   }
 
   destroy(): void {
     if (this.flushTimer !== null) clearTimeout(this.flushTimer);
-    if (this.pollInterval !== null) clearInterval(this.pollInterval);
+    this.wsSub?.destroy();
   }
 }

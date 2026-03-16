@@ -29,6 +29,7 @@ use oprc_grpc::{
     data_service_server::DataServiceServer,
     oprc_function_server::OprcFunctionServer,
 };
+pub use shard::EventPipelineConfig;
 
 use oprc_grpc::CreateCollectionRequest;
 pub mod collection_helpers;
@@ -127,6 +128,16 @@ pub async fn start_raw_server(
     conf: &OdgmConfig,
     zenoh_config: Option<oprc_zenoh::OprcZenohConfig>,
 ) -> Result<(ObjectDataGridManager, Pool), Box<dyn Error>> {
+    start_raw_server_with_pipeline(conf, zenoh_config, None).await
+}
+
+/// Like [`start_raw_server`] but allows overriding the V2 event pipeline
+/// configuration programmatically instead of relying on env vars.
+pub async fn start_raw_server_with_pipeline(
+    conf: &OdgmConfig,
+    zenoh_config: Option<oprc_zenoh::OprcZenohConfig>,
+    event_pipeline_config: Option<EventPipelineConfig>,
+) -> Result<(ObjectDataGridManager, Pool), Box<dyn Error>> {
     let z_conf = zenoh_config.unwrap_or_else(|| {
         oprc_zenoh::OprcZenohConfig::init_from_env().unwrap()
     });
@@ -150,11 +161,15 @@ pub async fn start_raw_server(
             trigger_timeout_ms: conf.trigger_timeout_ms,
             ..Default::default()
         };
-        Arc::new(UnifiedShardFactory::new_with_events(
+        let mut factory = UnifiedShardFactory::new_with_events(
             session_pool.clone(),
             event_config,
             factory_config,
-        ))
+        );
+        if let Some(pipeline_cfg) = event_pipeline_config {
+            factory = factory.with_event_pipeline(pipeline_cfg);
+        }
+        Arc::new(factory)
     } else {
         Arc::new(UnifiedShardFactory::new(
             session_pool.clone(),
