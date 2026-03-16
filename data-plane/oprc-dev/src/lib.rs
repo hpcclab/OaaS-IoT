@@ -83,7 +83,7 @@ pub fn rand_json(req: &FuncReq) -> Result<Vec<u8>, serde_json::Error> {
         let value = String::from_utf8(rand_string(req.value_size)).unwrap();
         map.insert(key, value);
     }
-    return serde_json::to_vec(&map);
+    serde_json::to_vec(&map)
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -142,7 +142,7 @@ pub fn rand_obj(
     entries.insert(
         "0".to_string(),
         ValData {
-            data: rand_json(req)?.into(),
+            data: rand_json(req)?,
             r#type: ValType::Byte as i32,
         },
     );

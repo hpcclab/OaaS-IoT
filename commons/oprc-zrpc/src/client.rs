@@ -84,12 +84,12 @@ where
         &self,
         payload: &C::In,
     ) -> Result<C::Out, ZrpcError<C::Err>> {
-        let byte = C::InSerde::to_zbyte(&payload)
-            .map_err(|e| ZrpcError::EncodeError(e))?;
+        let byte = C::InSerde::to_zbyte(payload)
+            .map_err(ZrpcError::EncodeError)?;
 
         let (tx, rx) = flume::bounded(self.config.channel_size);
 
-        let _ = self
+        self
             .z_session
             .get(self.key_expr.clone())
             .payload(byte)
@@ -106,12 +106,12 @@ where
         match reply.result() {
             Ok(sample) => {
                 let res = C::OutSerde::from_zbyte(sample.payload())
-                    .map_err(|e| ZrpcError::DecodeError(e))?;
+                    .map_err(ZrpcError::DecodeError)?;
                 Ok(res)
             }
             Err(err) => {
                 let wrapper = C::ErrSerde::from_zbyte(err.payload())
-                    .map_err(|e| ZrpcError::DecodeError(e))?;
+                    .map_err(ZrpcError::DecodeError)?;
                 let zrpc_server_error = C::unwrap(wrapper);
                 let err = match zrpc_server_error {
                     super::ZrpcServerError::AppError(app_err) => {
@@ -131,8 +131,8 @@ where
         key: String,
         payload: &C::In,
     ) -> Result<C::Out, ZrpcError<C::Err>> {
-        let byte = C::InSerde::to_zbyte(&payload)
-            .map_err(|e| ZrpcError::EncodeError(e))?;
+        let byte = C::InSerde::to_zbyte(payload)
+            .map_err(ZrpcError::EncodeError)?;
 
         let (tx, rx) = flume::bounded(self.config.channel_size);
 
@@ -152,12 +152,12 @@ where
         match reply.result() {
             Ok(sample) => {
                 let res = C::OutSerde::from_zbyte(sample.payload())
-                    .map_err(|e| ZrpcError::DecodeError(e))?;
+                    .map_err(ZrpcError::DecodeError)?;
                 Ok(res)
             }
             Err(err) => {
                 let wrapper = C::ErrSerde::from_zbyte(err.payload())
-                    .map_err(|e| ZrpcError::DecodeError(e))?;
+                    .map_err(ZrpcError::DecodeError)?;
                 let zrpc_server_error = C::unwrap(wrapper);
                 let err = match zrpc_server_error {
                     super::ZrpcServerError::AppError(app_err) => {

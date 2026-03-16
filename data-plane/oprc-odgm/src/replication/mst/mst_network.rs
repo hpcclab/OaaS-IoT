@@ -293,8 +293,8 @@ where
             mst_guard.upsert(MstKey(key_bytes.clone()), &final_value);
 
             // Emit sync event if dispatcher is configured
-            if let Some(dispatcher) = v2_dispatcher {
-                if let Some((obj_id, GranularRecord::Entry(entry_key))) =
+            if let Some(dispatcher) = v2_dispatcher
+                && let Some((obj_id, GranularRecord::Entry(entry_key))) =
                     parse_granular_key(&key_bytes)
                 {
                     let ctx = MutationContext::new_sync(
@@ -310,7 +310,6 @@ where
                     );
                     dispatcher.try_send(ctx);
                 }
-            }
         }
     } else {
         tracing::info!("No items returned from owner {}", owner);

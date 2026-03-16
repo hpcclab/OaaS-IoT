@@ -429,12 +429,11 @@ impl crate::ApplicationDataStorage for FjallTxStorage {
             let (key, value) =
                 entry.into_inner().map_err(Self::convert_error)?;
 
-            if let Some(max) = limit {
-                if idx >= max {
+            if let Some(max) = limit
+                && idx >= max {
                     next_key = Some(StorageValue::from_slice(key.as_ref()));
                     break;
                 }
-            }
 
             results.push((
                 StorageValue::from_slice(key.as_ref()),

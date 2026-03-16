@@ -188,7 +188,7 @@ async fn run_v2_consumer(
             if let Some(tp) = &dispatcher.trigger_processor {
                 if let Some(object_event) = evt.ctx.event_config.as_ref() {
                     let targets = collect_matching_triggers_inline(
-                        &object_event,
+                        object_event,
                         &prospective_event_type,
                     );
                     if targets.is_empty() {

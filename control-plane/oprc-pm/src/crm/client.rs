@@ -160,7 +160,7 @@ impl CrmClient {
                     chrono::Utc
                         .timestamp_opt(t.seconds, t.nanos as u32)
                         .single()
-                        .unwrap_or_else(|| chrono::Utc::now())
+                        .unwrap_or_else(chrono::Utc::now)
                 } else {
                     chrono::Utc::now()
                 };
@@ -326,13 +326,12 @@ impl CrmClient {
             if let Some(ref dep) = status_resp.deployment {
                 let ts = dep
                     .created_at
-                    .map(|t| {
+                    .and_then(|t| {
                         chrono::DateTime::from_timestamp(
                             t.seconds,
                             t.nanos as u32,
                         )
                     })
-                    .flatten()
                     .unwrap_or_else(chrono::Utc::now);
                 (
                     dep.package_name.clone(),

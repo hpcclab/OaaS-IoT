@@ -35,6 +35,7 @@ pub struct OPackage {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Validate, JsonSchema)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
+#[derive(Default)]
 pub struct ResourceRequirements {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cpu_request: Option<String>,
@@ -46,16 +47,6 @@ pub struct ResourceRequirements {
     pub memory_limit: Option<String>,
 }
 
-impl Default for ResourceRequirements {
-    fn default() -> Self {
-        Self {
-            cpu_request: None,
-            memory_request: None,
-            cpu_limit: None,
-            memory_limit: None,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Validate)]
 #[cfg_attr(test, derive(ts_rs::TS))]

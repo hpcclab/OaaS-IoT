@@ -39,7 +39,7 @@ where
             handler: self.handler.clone(),
             config: self.config.clone(),
             queryable: None,
-            _type: self._type.clone(),
+            _type: self._type,
         }
     }
 }
@@ -56,7 +56,7 @@ where
     ) -> Self {
         ZrpcNonSyncService {
             z_session,
-            handler: handler,
+            handler,
             config,
             queryable: None,
             _type: PhantomData,
@@ -203,13 +203,12 @@ where
 
     #[inline]
     pub async fn close(&mut self) {
-        if let Some(queryable) = self.queryable.take() {
-            if let Err(err) = queryable.undeclare().await {
+        if let Some(queryable) = self.queryable.take()
+            && let Err(err) = queryable.undeclare().await {
                 error!(
                     "RPC server '{}': error on undeclare: {}",
                     self.config.service_id, err
                 );
             };
-        }
     }
 }

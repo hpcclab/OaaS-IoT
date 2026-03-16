@@ -26,7 +26,7 @@ pub fn build_grpc_routes(
 ) -> Routes {
     let reflection = ReflectionBuilder::configure().build_v1().ok();
 
-    let health = HealthSvc::default();
+    let health = HealthSvc;
     let crm_info = CrmInfoSvc::new(client.clone(), default_namespace.clone());
     let topology = TopologySvc::new(zenoh);
 

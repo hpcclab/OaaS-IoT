@@ -17,11 +17,9 @@ fn main() {
     if let Ok(output) = Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
         .output()
-    {
-        if output.status.success() {
+        && output.status.success() {
             let git_hash =
                 String::from_utf8_lossy(&output.stdout).trim().to_string();
             println!("cargo:rustc-env=GIT_HASH={}", git_hash);
         }
-    }
 }

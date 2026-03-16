@@ -265,12 +265,11 @@ impl DeploymentStorage for EtcdStorage {
             // {prefix}/deployments/{key}/clusters/{cluster}
             let full_key = String::from_utf8_lossy(kv.key());
             let base = format!("{}/deployments/", self.key_prefix);
-            if let Some(rest) = full_key.strip_prefix(&base) {
-                if rest.contains('/') {
+            if let Some(rest) = full_key.strip_prefix(&base)
+                && rest.contains('/') {
                     // Nested path -> not a deployment record
                     continue;
                 }
-            }
 
             // Try to parse the value; skip entries that aren't valid deployment JSON
             let d: OClassDeployment = match serde_json::from_slice(kv.value()) {
@@ -278,21 +277,18 @@ impl DeploymentStorage for EtcdStorage {
                 Err(_) => continue,
             };
             // Apply filters similar to memory backend
-            if let Some(ref package_name) = filter.package_name {
-                if &d.package_name != package_name {
+            if let Some(ref package_name) = filter.package_name
+                && &d.package_name != package_name {
                     continue;
                 }
-            }
-            if let Some(ref class_key) = filter.class_key {
-                if &d.class_key != class_key {
+            if let Some(ref class_key) = filter.class_key
+                && &d.class_key != class_key {
                     continue;
                 }
-            }
-            if let Some(ref target_env) = filter.target_env {
-                if !d.target_envs.contains(target_env) {
+            if let Some(ref target_env) = filter.target_env
+                && !d.target_envs.contains(target_env) {
                     continue;
                 }
-            }
             deployments.push(d);
         }
         Ok(deployments)

@@ -234,9 +234,9 @@ impl ArtifactStore for FsArtifactStore {
         let mut entries = fs::read_dir(&self.wasm_dir).await?;
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("wasm") {
-                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                    if stem.len() == 64
+            if path.extension().and_then(|e| e.to_str()) == Some("wasm")
+                && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+                    && stem.len() == 64
                         && stem.chars().all(|c| c.is_ascii_hexdigit())
                     {
                         let file_meta = entry.metadata().await?;
@@ -248,8 +248,6 @@ impl ArtifactStore for FsArtifactStore {
                             meta: artifact_meta,
                         });
                     }
-                }
-            }
         }
         artifacts.sort_by(|a, b| a.id.cmp(&b.id));
         Ok(artifacts)
@@ -262,7 +260,7 @@ impl ArtifactStore for FsArtifactStore {
     ) -> Result<(), ArtifactError> {
         let path = self.meta_path(id);
         let json = serde_json::to_string_pretty(meta)
-            .map_err(|e| ArtifactError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| ArtifactError::Io(std::io::Error::other(e)))?;
         fs::write(&path, json).await?;
         debug!(id = %id, "Artifact metadata stored");
         Ok(())
@@ -278,7 +276,7 @@ impl ArtifactStore for FsArtifactStore {
         }
         let json = fs::read_to_string(&path).await?;
         let meta: ArtifactMeta = serde_json::from_str(&json)
-            .map_err(|e| ArtifactError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| ArtifactError::Io(std::io::Error::other(e)))?;
         Ok(Some(meta))
     }
 }

@@ -3,10 +3,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
+#[derive(Default)]
 pub enum FunctionType {
     #[serde(rename = "BUILTIN")]
     Builtin,
     #[serde(rename = "CUSTOM")]
+    #[default]
     Custom,
     #[serde(rename = "MACRO")]
     Macro,
@@ -16,17 +18,14 @@ pub enum FunctionType {
     Wasm,
 }
 
-impl Default for FunctionType {
-    fn default() -> Self {
-        Self::Custom
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
+#[derive(Default)]
 pub enum DeploymentCondition {
     #[serde(rename = "PENDING")]
+    #[default]
     Pending,
     #[serde(rename = "DEPLOYING")]
     Deploying,
@@ -38,17 +37,14 @@ pub enum DeploymentCondition {
     Deleted,
 }
 
-impl Default for DeploymentCondition {
-    fn default() -> Self {
-        Self::Pending
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
+#[derive(Default)]
 pub enum FunctionAccessModifier {
     #[serde(rename = "PUBLIC")]
+    #[default]
     Public,
     #[serde(rename = "INTERNAL")]
     Internal,
@@ -56,17 +52,14 @@ pub enum FunctionAccessModifier {
     Private,
 }
 
-impl Default for FunctionAccessModifier {
-    fn default() -> Self {
-        Self::Public
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
+#[derive(Default)]
 pub enum ConsistencyModel {
     #[serde(rename = "NONE")]
+    #[default]
     None,
     #[serde(rename = "READ_YOUR_WRITE")]
     ReadYourWrite,
@@ -76,11 +69,6 @@ pub enum ConsistencyModel {
     Strong,
 }
 
-impl Default for ConsistencyModel {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 #[cfg(test)]
 mod tests {

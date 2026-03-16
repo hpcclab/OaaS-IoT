@@ -403,7 +403,7 @@ where
                                                 }
                                                 _ => storage_cursor
                                                     .as_ref()
-                                                    .map_or(false, |cursor_key| {
+                                                    .is_some_and(|cursor_key| {
                                                         match parse_granular_key(
                                                             cursor_key.as_slice(),
                                                         ) {
@@ -415,7 +415,7 @@ where
                                                     }),
                                             }
                                         } else {
-                                            storage_cursor.as_ref().map_or(false, |cursor_key| {
+                                            storage_cursor.as_ref().is_some_and(|cursor_key| {
                                                 match parse_granular_key(cursor_key.as_slice()) {
                                                     Some((ref next_obj, GranularRecord::Entry(next_entry)))
                                                         if next_obj == normalized_id
@@ -499,14 +499,13 @@ where
         let version_before_batch = metadata.object_version;
 
         // Check expected version for CAS
-        if let Some(expected) = expected_version {
-            if metadata.object_version != expected {
+        if let Some(expected) = expected_version
+            && metadata.object_version != expected {
                 return Err(ShardError::VersionMismatch {
                     expected,
                     actual: metadata.object_version,
                 });
             }
-        }
 
         // Increment version once for the entire batch
         metadata.increment_version();
@@ -613,7 +612,7 @@ where
         let mut actually_deleted: Vec<String> = Vec::new();
 
         for key in &keys {
-            let storage_key = build_entry_key(normalized_id, &key);
+            let storage_key = build_entry_key(normalized_id, key);
 
             // Check if exists
             let exists = self

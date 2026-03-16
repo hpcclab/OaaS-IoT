@@ -13,17 +13,6 @@ use oprc_zenoh::pool::Pool;
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
-/// Health check handler matching the PM /health contract.
-async fn health_check() -> axum::Json<serde_json::Value> {
-    axum::Json(serde_json::json!({
-        "status": "healthy",
-        "service": "oprc-dev-server",
-        "version": env!("CARGO_PKG_VERSION"),
-        "timestamp": chrono::Utc::now().to_rfc3339(),
-        "storage": { "status": "ok" }
-    }))
-}
-
 /// Start the dev server with the given configuration.
 pub async fn start(config: DevServerConfig) -> anyhow::Result<()> {
     let port = config.port;
@@ -136,7 +125,6 @@ async fn build_dev_router(
     let router = gateway
         .merge(gateway_proxy)
         .merge(stub)
-        // .route("/health", axum::routing::get(health_check))
         .layer(CorsLayer::permissive());
 
     // Frontend fallback (embedded static files)

@@ -100,6 +100,7 @@ impl Default for OClassDeployment {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
+#[derive(Default)]
 pub struct DeploymentFilter {
     pub package_name: Option<String>,
     pub class_key: Option<String>,
@@ -107,16 +108,6 @@ pub struct DeploymentFilter {
     pub condition: Option<DeploymentCondition>,
 }
 
-impl Default for DeploymentFilter {
-    fn default() -> Self {
-        Self {
-            package_name: None,
-            class_key: None,
-            target_env: None,
-            condition: None,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Validate, Default)]
 #[cfg_attr(test, derive(ts_rs::TS))]

@@ -429,7 +429,7 @@ fn merged_function_routes(
                     String,
                     crate::crd::class_runtime::FunctionRoute,
                 > = std::collections::BTreeMap::new();
-                for (_k, v) in &predicted {
+                for v in predicted.values() {
                     if let Some(ref fk) = v.function_key {
                         fk_index.insert(fk.clone(), v.clone());
                     }
@@ -437,9 +437,9 @@ fn merged_function_routes(
                 // Enrich user-provided keys: if url empty, try to fill from predicted via function_key
                 let mut fn_routes = inv.fn_routes.clone();
                 for (_k, v) in fn_routes.iter_mut() {
-                    if v.url.is_empty() {
-                        if let Some(ref fk) = v.function_key {
-                            if let Some(pred) = fk_index.get(fk) {
+                    if v.url.is_empty()
+                        && let Some(ref fk) = v.function_key
+                            && let Some(pred) = fk_index.get(fk) {
                                 v.url = pred.url.clone();
                                 if v.stateless.is_none() {
                                     v.stateless = pred.stateless;
@@ -451,8 +451,6 @@ fn merged_function_routes(
                                     v.active_group = pred.active_group.clone();
                                 }
                             }
-                        }
-                    }
                 }
                 // Also add any predicted keys that are missing
                 for (k, v) in predicted.into_iter() {

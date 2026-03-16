@@ -35,11 +35,10 @@ pub fn eval_enforce(
     stability_secs: u64,
     cooldown_secs: u64,
 ) -> EnforceDecision {
-    if let Some(until) = state.cooldown_until {
-        if now < until {
+    if let Some(until) = state.cooldown_until
+        && now < until {
             return EnforceDecision::SkipCooldown;
         }
-    }
     if state.last_target == Some(target) {
         if state.since.is_none() {
             state.since = Some(now);
@@ -50,9 +49,9 @@ pub fn eval_enforce(
             state.since = None;
             state.cooldown_until =
                 Some(now + chrono::Duration::seconds(cooldown_secs as i64));
-            return EnforceDecision::Apply;
+            EnforceDecision::Apply
         } else {
-            return EnforceDecision::SkipStability;
+            EnforceDecision::SkipStability
         }
     } else {
         state.last_target = Some(target);
@@ -126,8 +125,8 @@ pub async fn enforcer_loop(ctx: Arc<ControllerContext>) {
                 // that may not be reflected in the controller's cached object.
                 let dr_api: Api<ClassRuntime> =
                     Api::namespaced(ctx.client.clone(), &ns);
-                if let Ok(opt_live) = dr_api.get_opt(&name).await {
-                    if let Some(live) = opt_live {
+                if let Ok(opt_live) = dr_api.get_opt(&name).await
+                    && let Some(live) = opt_live {
                         replicas_rec = live
                             .status
                             .and_then(|s| s.nfr_recommendations.clone())
@@ -145,7 +144,6 @@ pub async fn enforcer_loop(ctx: Arc<ControllerContext>) {
                                 r.max(1).min(ctx.cfg.enforcement.max_replicas)
                             });
                     }
-                }
             }
             if replicas_rec.is_none() {
                 trace!(%ns, %name, "enforcer: skip (no replicas recommendation)");

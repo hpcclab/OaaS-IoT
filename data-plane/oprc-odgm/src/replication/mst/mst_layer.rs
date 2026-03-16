@@ -90,7 +90,7 @@ impl<
         let mst = Arc::new(RwLock::new(MerkleSearchTree::default()));
         let config = Arc::new(config);
         let cls_id = metadata.collection.clone();
-        let partition_id = metadata.partition_id as u16;
+        let partition_id = metadata.partition_id;
 
         // Create networking with access to storage, MST, and config
         let networking = Arc::new(ZenohMstNetworking::new(
@@ -137,7 +137,7 @@ impl<
         tracing::debug!("Starting networking layer");
         self.networking.start().await.map_err(|e| {
             tracing::error!("Failed to start networking layer: {}", e);
-            oprc_dp_storage::StorageError::serialization(&e.to_string())
+            oprc_dp_storage::StorageError::serialization(e.to_string())
         })?;
 
         self.start_periodic_publication().await;
@@ -194,11 +194,11 @@ impl<
 
                 // Get MST pages and publish them
                 let pages = {
-                    let pages_vec = match ranges_result {
+                    
+                    match ranges_result {
                         Some(ranges_slice) => ranges_slice.to_vec(),
                         None => vec![],
-                    };
-                    pages_vec
+                    }
                 };
 
                 if !pages.is_empty() {
@@ -439,11 +439,11 @@ impl<
         // Extract page ranges in a way that doesn't borrow
         let ranges_result = mst_guard.serialise_page_ranges();
         let pages = {
-            let pages_vec = match ranges_result {
+            
+            match ranges_result {
                 Some(ranges_slice) => ranges_slice.to_vec(),
                 None => vec![],
-            };
-            pages_vec
+            }
         };
 
         if !pages.is_empty() {
@@ -453,7 +453,7 @@ impl<
                 .publish_pages(self.shard_id, network_pages)
                 .await
                 .map_err(|e| {
-                    oprc_dp_storage::StorageError::serialization(&e.to_string())
+                    oprc_dp_storage::StorageError::serialization(e.to_string())
                 })?;
         }
 

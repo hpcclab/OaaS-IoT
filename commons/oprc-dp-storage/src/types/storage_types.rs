@@ -24,6 +24,7 @@ impl std::fmt::Display for StorageBackendType {
 
 /// Storage statistics
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct StorageStats {
     pub entries_count: u64,
     pub total_size_bytes: u64,
@@ -33,18 +34,6 @@ pub struct StorageStats {
     pub backend_specific: std::collections::HashMap<String, String>,
 }
 
-impl Default for StorageStats {
-    fn default() -> Self {
-        Self {
-            entries_count: 0,
-            total_size_bytes: 0,
-            memory_usage_bytes: None,
-            disk_usage_bytes: None,
-            cache_hit_rate: None,
-            backend_specific: std::collections::HashMap::new(),
-        }
-    }
-}
 
 /// Batch operation for efficient bulk operations
 #[derive(Debug, Clone)]
@@ -75,18 +64,15 @@ pub struct StorageBackendConfig {
 
 /// Compression types supported by storage backends
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Default)]
 pub enum CompressionType {
+    #[default]
     None,
     Gzip,
     Lz4,
     Zstd,
 }
 
-impl Default for CompressionType {
-    fn default() -> Self {
-        CompressionType::None
-    }
-}
 
 #[cfg(test)]
 mod tests {

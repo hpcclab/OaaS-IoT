@@ -7,6 +7,7 @@ use validator::Validate;
 )]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
+#[derive(Default)]
 pub struct NfrRequirements {
     #[validate(range(
         min = 1,
@@ -27,15 +28,6 @@ pub struct NfrRequirements {
     pub cpu_utilization_target: Option<f64>,
 }
 
-impl Default for NfrRequirements {
-    fn default() -> Self {
-        Self {
-            min_throughput_rps: None,
-            availability: None,
-            cpu_utilization_target: None,
-        }
-    }
-}
 
 #[derive(
     Debug, Clone, Serialize, Deserialize, PartialEq, Validate, JsonSchema,
@@ -58,6 +50,7 @@ pub struct QosRequirement {
 )]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
+#[derive(Default)]
 pub struct ProvisionConfig {
     /// Explicit container image for the function runtime (required upstream when deploying)
     /// If None, deployment controllers will reject the spec instead of applying fallbacks.
@@ -80,23 +73,6 @@ pub struct ProvisionConfig {
     pub max_scale: Option<u32>, // Maximum scale for autoscaling
 }
 
-impl Default for ProvisionConfig {
-    fn default() -> Self {
-        Self {
-            container_image: None,
-            wasm_module_url: None,
-            port: None,
-            need_http2: false,
-            max_concurrency: 0, // No limit by default
-            cpu_request: None,
-            memory_request: None,
-            cpu_limit: None,
-            memory_limit: None,
-            min_scale: None,
-            max_scale: None,
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

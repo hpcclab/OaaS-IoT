@@ -31,7 +31,7 @@ pub async fn create_storage_factory(
                     timeout_seconds: etcd.timeout,
                     tls,
                 };
-                return cfg.build().await.map_err(Into::into);
+                cfg.build().await.map_err(Into::into)
             }
             #[cfg(not(feature = "etcd"))]
             {

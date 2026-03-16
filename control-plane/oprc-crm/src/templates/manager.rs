@@ -309,12 +309,12 @@ impl TemplateManager {
     pub fn new(include_knative: bool) -> Self {
         // Minimal built-ins
         let mut templates: Vec<Box<dyn Template + Send + Sync>> = vec![
-            Box::new(DevTemplate::default()),
-            Box::new(EdgeTemplate::default()),
-            Box::new(K8sDeploymentTemplate::default()),
+            Box::new(DevTemplate),
+            Box::new(EdgeTemplate),
+            Box::new(K8sDeploymentTemplate),
         ];
         if include_knative {
-            templates.push(Box::new(KnativeTemplate::default()));
+            templates.push(Box::new(KnativeTemplate));
         }
         Self { templates }
     }
@@ -328,7 +328,7 @@ impl TemplateManager {
         if let Some(h) = spec.selected_template.as_deref() {
             let mut matched = None;
             for t in &self.templates {
-                if t.name() == h || t.aliases().iter().any(|a| *a == h) {
+                if t.name() == h || t.aliases().contains(&h) {
                     matched = Some(&**t);
                     break;
                 }
@@ -630,11 +630,10 @@ impl TemplateManager {
                     let mut dedup: Vec<EnvVar> = Vec::with_capacity(env.len());
                     let mut last_name: Option<String> = None;
                     for e in env.into_iter() {
-                        if let Some(prev) = last_name.as_ref() {
-                            if prev == &e.name {
+                        if let Some(prev) = last_name.as_ref()
+                            && prev == &e.name {
                                 continue;
                             }
-                        }
                         last_name = Some(e.name.clone());
                         dedup.push(e);
                     }

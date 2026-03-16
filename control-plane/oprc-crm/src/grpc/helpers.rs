@@ -33,11 +33,10 @@ pub fn attach_corr<T>(
     mut resp: Response<T>,
     corr: &Option<String>,
 ) -> Response<T> {
-    if let Some(c) = corr {
-        if let Ok(v) = MetadataValue::try_from(c.clone()) {
+    if let Some(c) = corr
+        && let Ok(v) = MetadataValue::try_from(c.clone()) {
             resp.metadata_mut().insert("x-correlation-id", v);
         }
-    }
     resp
 }
 
@@ -143,14 +142,14 @@ pub fn map_crd_to_proto(
         .cloned()
         .unwrap_or_else(|| dr.name_any());
 
-    let created_at = dr.metadata.creation_timestamp.as_ref().and_then(|t| {
+    let created_at = dr.metadata.creation_timestamp.as_ref().map(|t| {
         // kube::Time wraps chrono::DateTime in .0
         let ts_secs = t.0.as_second();
         let ts_nanos = t.0.subsec_nanosecond();
-        Some(oaas_common::Timestamp {
+        oaas_common::Timestamp {
             seconds: ts_secs,
             nanos: ts_nanos,
-        })
+        }
     });
 
     // DeploymentUnit response does not include summarized_status or resource_refs
@@ -306,8 +305,8 @@ pub fn count_nodes(nodes: &[Node]) -> (u32, u32) {
     let total = nodes.len() as u32;
     let mut ready = 0u32;
     for n in nodes.iter() {
-        if let Some(status) = &n.status {
-            if let Some(conds) = &status.conditions {
+        if let Some(status) = &n.status
+            && let Some(conds) = &status.conditions {
                 for c in conds {
                     if c.type_ == "Ready" && c.status == "True" {
                         ready += 1;
@@ -315,7 +314,6 @@ pub fn count_nodes(nodes: &[Node]) -> (u32, u32) {
                     }
                 }
             }
-        }
     }
     (total, ready)
 }

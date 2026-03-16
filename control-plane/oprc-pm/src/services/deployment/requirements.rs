@@ -29,11 +29,10 @@ pub async fn calculate_requirements(
     );
 
     let mut target_availability = 0.99_f64; // default
-    if let Some(dep_av) = deployment.nfr_requirements.availability {
-        if (0.0..=1.0).contains(&dep_av) {
+    if let Some(dep_av) = deployment.nfr_requirements.availability
+        && (0.0..=1.0).contains(&dep_av) {
             target_availability = dep_av;
         }
-    }
 
     let mut ratios: Vec<f64> = Vec::new();
     for cluster in &deployment.target_envs {

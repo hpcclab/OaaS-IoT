@@ -63,10 +63,8 @@ impl Injector for MetadataMapInjector<'_> {
     fn set(&mut self, key: &str, value: String) {
         if let Ok(key) =
             tonic::metadata::MetadataKey::from_bytes(key.as_bytes())
-        {
-            if let Ok(val) = value.parse() {
+            && let Ok(val) = value.parse() {
                 self.0.insert(key, val);
             }
-        }
     }
 }

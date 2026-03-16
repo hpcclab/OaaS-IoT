@@ -34,7 +34,7 @@ where
     }
 
     pub fn partition_id_u16(&self) -> u16 {
-        self.metadata.partition_id as u16
+        self.metadata.partition_id
     }
 
     /// Attach an in-process function executor (e.g. for local or WASM functions).
@@ -124,11 +124,10 @@ where
             .await
             .map_err(ShardError::from)?;
         for (k, _) in chunk {
-            if let Some((obj_id, _)) = parse_granular_key(k.as_slice()) {
-                if obj_id == normalized_id {
+            if let Some((obj_id, _)) = parse_granular_key(k.as_slice())
+                && obj_id == normalized_id {
                     all.push(k.into_vec());
                 }
-            }
         }
         // Drain remaining pages if any
         while let Some(cur) = cursor.take() {
@@ -139,11 +138,10 @@ where
                 .await
                 .map_err(ShardError::from)?;
             for (k, _) in chunk {
-                if let Some((obj_id, _)) = parse_granular_key(k.as_slice()) {
-                    if obj_id == normalized_id {
+                if let Some((obj_id, _)) = parse_granular_key(k.as_slice())
+                    && obj_id == normalized_id {
                         all.push(k.into_vec());
                     }
-                }
             }
             cursor = next;
         }
@@ -415,8 +413,8 @@ where
         self.set_metadata(&normalized_id, metadata).await?;
 
         // Emit V2 per-entry delete events (one per previously existing key)
-        if let Some(v2) = &self.v2_dispatcher {
-            if let Some(entry) = existing_entry {
+        if let Some(v2) = &self.v2_dispatcher
+            && let Some(entry) = existing_entry {
                 // Collect changed keys from both numeric and string maps
                 let mut changed: Vec<ChangedKey> =
                     Vec::with_capacity(entry.entries.len());
@@ -441,7 +439,6 @@ where
                     v2.try_send(ctx);
                 }
             }
-        }
 
         Ok(())
     }
@@ -495,8 +492,8 @@ where
         self.set_metadata(normalized_id, metadata).await?;
 
         // Emit V2 events if dispatcher exists
-        if let Some(v2) = &self.v2_dispatcher {
-            if let Some(entry) = existing_entry {
+        if let Some(v2) = &self.v2_dispatcher
+            && let Some(entry) = existing_entry {
                 let mut changed: Vec<ChangedKey> =
                     Vec::with_capacity(entry.entries.len());
                 for (k, _v) in entry.entries.iter() {
@@ -520,7 +517,6 @@ where
                     v2.try_send(ctx);
                 }
             }
-        }
 
         Ok(())
     }
@@ -566,14 +562,13 @@ where
 
             match page.next_cursor {
                 Some(next_cursor) => {
-                    if let Some(current) = &cursor {
-                        if current == &next_cursor {
+                    if let Some(current) = &cursor
+                        && current == &next_cursor {
                             return Err(ShardError::ConfigurationError(
                                 "granular reconstruction encountered a stalled cursor"
                                     .into(),
                             ));
                         }
-                    }
                     cursor = Some(next_cursor);
                 }
                 None => break,
@@ -700,20 +695,16 @@ where
                             info!("Shard {} readiness: {}", metadata.id, receiver.borrow().to_owned());
                         }
                         token = liveliness_sub.recv_async() => {
-                            match token {
-                                Ok(sample) => {
-                                    if let Some(liveliness) = &liveliness_state {
-                                        let id = liveliness.handle_sample(&sample).await;
-                                        info!("shard {}: liveliness {id:?} updated {sample:?}", metadata.id );
-                                        if id != Some(metadata.id) {
-                                            if let Some(inv_manager) = &inv_net_manager {
-                                                let mut inv = inv_manager.lock().await;
-                                                inv.on_liveliness_updated(liveliness).await;
-                                            }
+                            if let Ok(sample) = token {
+                                if let Some(liveliness) = &liveliness_state {
+                                    let id = liveliness.handle_sample(&sample).await;
+                                    info!("shard {}: liveliness {id:?} updated {sample:?}", metadata.id );
+                                    if id != Some(metadata.id)
+                                        && let Some(inv_manager) = &inv_net_manager {
+                                            let mut inv = inv_manager.lock().await;
+                                            inv.on_liveliness_updated(liveliness).await;
                                         }
-                                    }
-                                },
-                                Err(_) => {},
+                                }
                             };
                         }
                         _ = token.cancelled() => { break; }

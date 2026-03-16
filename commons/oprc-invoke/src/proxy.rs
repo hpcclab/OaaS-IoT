@@ -33,9 +33,9 @@ pub enum ProxyError<T = EmptyResponse> {
     KeyErr(),
 }
 
-impl<T> Into<Status> for ProxyError<T> {
-    fn into(self) -> Status {
-        match self {
+impl<T> From<ProxyError<T>> for Status {
+    fn from(val: ProxyError<T>) -> Self {
+        match val {
             ProxyError::NoQueryable(e) => {
                 Status::not_found(format!("No queryable object found: {}", e))
             }
@@ -153,7 +153,7 @@ impl ObjectProxy {
         self.z_session
             .delete(&key_expr)
             .await
-            .map_err(|e| ProxyError::NoQueryable(e))?;
+            .map_err(ProxyError::NoQueryable)?;
         Ok(())
     }
 
@@ -247,11 +247,11 @@ impl ObjectProxy {
         let req = InvocationRequest {
             cls_id: cls.to_string(),
             fn_id: fn_id.to_string(),
-            payload: payload.into(),
+            payload: payload,
             ..Default::default()
         };
         self.call_zenoh(key_expr, Some(encode(&req)), |sample| {
-            decode(sample.payload()).map_err(|e| ProxyError::DecodeError(e))
+            decode(sample.payload()).map_err(ProxyError::DecodeError)
         })
         .await
     }
@@ -265,7 +265,7 @@ impl ObjectProxy {
             req.cls_id, req.partition_id, req.fn_id
         );
         self.call_zenoh(key_expr, Some(encode(req)), |sample| {
-            decode(sample.payload()).map_err(|e| ProxyError::DecodeError(e))
+            decode(sample.payload()).map_err(ProxyError::DecodeError)
         })
         .await
     }
@@ -275,13 +275,13 @@ impl ObjectProxy {
         key_expr: &KeyExpr<'a>,
         req: InvocationRequest,
     ) -> Result<InvocationResponse, ProxyError> {
-        let reply = self.call_zenoh_raw(&key_expr, encode(&req)).await?;
+        let reply = self.call_zenoh_raw(key_expr, encode(&req)).await?;
         match reply.result() {
             Ok(sample) => {
-                decode(sample.payload()).map_err(|e| ProxyError::DecodeError(e))
+                decode(sample.payload()).map_err(ProxyError::DecodeError)
             }
             Err(reply_err) => decode(reply_err.payload())
-                .map_err(|e| ProxyError::DecodeError(e)),
+                .map_err(ProxyError::DecodeError),
         }
     }
 
@@ -305,11 +305,11 @@ impl ObjectProxy {
             fn_id: fn_name.to_string(),
             partition_id: meta.partition_id,
             object_id: meta.object_id.clone(),
-            payload: payload.into(),
+            payload: payload,
             ..Default::default()
         };
         self.call_zenoh(key_expr, Some(encode(&req)), |sample| {
-            decode(sample.payload()).map_err(|e| ProxyError::DecodeError(e))
+            decode(sample.payload()).map_err(ProxyError::DecodeError)
         })
         .await
     }
@@ -325,7 +325,7 @@ impl ObjectProxy {
             req.cls_id, req.partition_id, object_segment, req.fn_id
         );
         self.call_zenoh(key_expr, Some(encode(req)), |sample| {
-            decode(sample.payload()).map_err(|e| ProxyError::DecodeError(e))
+            decode(sample.payload()).map_err(ProxyError::DecodeError)
         })
         .await
     }
@@ -345,10 +345,10 @@ impl ObjectProxy {
         let reply = self.call_zenoh_raw(&key_expr, encode(&req)).await?;
         match reply.result() {
             Ok(sample) => {
-                decode(sample.payload()).map_err(|e| ProxyError::DecodeError(e))
+                decode(sample.payload()).map_err(ProxyError::DecodeError)
             }
             Err(reply_err) => decode(reply_err.payload())
-                .map_err(|e| ProxyError::DecodeError(e)),
+                .map_err(ProxyError::DecodeError),
         }
     }
 
@@ -369,7 +369,7 @@ impl ObjectProxy {
         let (tx, rx) = flume::unbounded();
         let rx = builder
             .consolidation(ConsolidationMode::None)
-            .congestion_control(self.conf.conjection_control.clone())
+            .congestion_control(self.conf.conjection_control)
             .target(self.conf.get_target())
             .with((
                 Callback::from(move |s| {
@@ -378,7 +378,7 @@ impl ObjectProxy {
                 rx,
             ))
             .await
-            .map_err(|e| ProxyError::NoQueryable(e))?;
+            .map_err(ProxyError::NoQueryable)?;
 
         let data = match rx.recv_async().await {
             Ok(reply) => match reply.result() {
@@ -413,17 +413,17 @@ impl ObjectProxy {
         let (tx, rx) = flume::unbounded();
         let rx = builder
             .consolidation(ConsolidationMode::None)
-            .congestion_control(self.conf.conjection_control.clone())
+            .congestion_control(self.conf.conjection_control)
             .target(self.conf.get_target())
             .with((tx, rx))
             .await
-            .map_err(|e| ProxyError::NoQueryable(e))?;
+            .map_err(ProxyError::NoQueryable)?;
 
         let mut results = Vec::new();
         while let Ok(reply) = rx.recv_async().await {
             match reply.result() {
                 Ok(sample) => {
-                    results.push(f(&sample)?);
+                    results.push(f(sample)?);
                 }
                 Err(_) => {
                     // Ignore error replies
@@ -451,7 +451,7 @@ impl ObjectProxy {
                 let _ = tx.send(s);
             })
             .await
-            .map_err(|e| ProxyError::NoQueryable(e))?;
+            .map_err(ProxyError::NoQueryable)?;
         rx.recv_async()
             .await
             .map_err(|e| ProxyError::RetrieveReplyErr(Box::new(e)))

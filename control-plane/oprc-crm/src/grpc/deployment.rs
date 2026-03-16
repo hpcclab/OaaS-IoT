@@ -146,7 +146,7 @@ impl oprc_grpc::proto::deployment::deployment_service_server::DeploymentService
                 let summary = dr
                     .status
                     .as_ref()
-                    .map(|s| summarize_status(s))
+                    .map(summarize_status)
                     .unwrap_or_else(|| "found".to_string());
                 let deployment = Some(map_crd_to_proto(&dr));
                 let status_resource_refs = dr.status.as_ref().and_then(|s| s.resource_refs.as_ref()).map(|refs| {

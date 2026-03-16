@@ -14,11 +14,10 @@ pub struct PackageFilter {
 
 impl PackageFilter {
     pub fn matches(&self, package: &OPackage) -> bool {
-        if let Some(ref pattern) = self.name_pattern {
-            if !package.name.contains(pattern) {
+        if let Some(ref pattern) = self.name_pattern
+            && !package.name.contains(pattern) {
                 return false;
             }
-        }
 
         if !self.tags.is_empty() {
             let package_tags: HashSet<String> =

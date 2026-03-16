@@ -177,7 +177,6 @@ impl<T: InvocationExecutor + Send + Sync> InvocationZenohHandler<T> {
             Err(e) => {
                 write_error(&query, e, ResponseStatus::InvalidRequest as i32)
                     .await;
-                return;
             }
         }
     }
@@ -189,7 +188,7 @@ where
     T: InvocationExecutor + Send + Sync + 'static,
 {
     async fn handle(&self, query: Query) {
-        let is_object = match query.key_expr().split("/").skip(3).next() {
+        let is_object = match query.key_expr().split("/").nth(3) {
             Some(path) => path == "objects",
             None => {
                 return;
@@ -423,7 +422,7 @@ async fn write_message<M: Message>(query: &Query, msg: M) {
 /// Write an error response back to the query sender
 async fn write_error<E: ToString>(query: &Query, e: E, status: i32) {
     let resp = InvocationResponse {
-        payload: Some(e.to_string().into_bytes().into()),
+        payload: Some(e.to_string().into_bytes()),
         status,
         ..Default::default()
     };

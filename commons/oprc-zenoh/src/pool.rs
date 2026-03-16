@@ -65,7 +65,7 @@ impl Pool {
     ) -> Result<zenoh::Session, Box<dyn std::error::Error + Send + Sync>> {
         let mut pool = self.inner.lock().await;
         pool.next_idx += 1;
-        if pool.sessions.len() < self.max_sessions as usize {
+        if pool.sessions.len() < self.max_sessions {
             let mut z_conf = self.z_conf.clone();
             // Assign a unique listen port per session deterministically only when a base port was provided.
             // Otherwise, keep port 0 to let the OS choose a free ephemeral port (collision-free across processes).

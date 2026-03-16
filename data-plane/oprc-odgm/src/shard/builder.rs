@@ -372,7 +372,7 @@ where
             metadata,
             self.storage,
             self.replication,
-            self.options.into(),
+            self.options,
         )
         .await
     }
@@ -415,7 +415,7 @@ where
             self.replication,
             session,
             event_manager,
-            self.options.into(),
+            self.options,
             v2_dispatcher,
         )
         .await

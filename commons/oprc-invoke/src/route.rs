@@ -17,6 +17,12 @@ pub struct RoutingManager {
     table: scc::HashMap<String, ClsRouting>,
 }
 
+impl Default for RoutingManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RoutingManager {
     pub fn new() -> RoutingManager {
         RoutingManager {

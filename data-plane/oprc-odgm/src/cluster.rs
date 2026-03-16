@@ -76,15 +76,14 @@ impl ObjectDataGridManager {
         pid: u16,
     ) -> Option<ArcUnifiedObjectShard> {
         let option = self.metadata_manager.get_shard_ids(collection).await;
-        if let Some(groups) = option {
-            if let Some(group) = groups.get(pid as usize) {
+        if let Some(groups) = option
+            && let Some(group) = groups.get(pid as usize) {
                 for s in &group.shard_ids {
                     if let Some(shard) = self.shard_manager.get_shard(*s) {
                         return Some(shard);
                     }
                 }
             }
-        }
         None
     }
 

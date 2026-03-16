@@ -175,17 +175,16 @@ impl DataService for OdgmDataService {
         };
         let variant = "string";
         incr_get(variant);
-        if let Some(entry) = entry_opt {
-            if let ObjectIdentity::Str(sid) = identity {
+        if let Some(entry) = entry_opt
+            && let ObjectIdentity::Str(sid) = identity {
                 let mut data = entry.to_data();
                 data.metadata = Some(oprc_grpc::ObjMeta {
                     cls_id: key_request.cls_id.clone(),
-                    partition_id: key_request.partition_id as u32,
+                    partition_id: key_request.partition_id,
                     object_id: Some(sid.clone()),
                 });
                 return Ok(Response::new(ObjectResponse { obj: Some(data) }));
             }
-        }
         Err(Status::not_found("object not found"))
     }
 

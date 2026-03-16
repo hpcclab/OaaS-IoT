@@ -29,18 +29,18 @@ where
                         Ordering::Less => local,
                         Ordering::Equal => {
                             // Deterministic tiebreaking using node_id
-                            if node_id % 2 == 0 { remote } else { local }
+                            if node_id.is_multiple_of(2) { remote } else { local }
                         }
                     }
                 },
             ),
             serialize: Box::new(|value| {
                 serde_json::to_vec(value)
-                    .map_err(|e| StorageError::serialization(&e.to_string()))
+                    .map_err(|e| StorageError::serialization(e.to_string()))
             }),
             deserialize: Box::new(|bytes| {
                 serde_json::from_slice(bytes)
-                    .map_err(|e| StorageError::serialization(&e.to_string()))
+                    .map_err(|e| StorageError::serialization(e.to_string()))
             }),
         }
     }

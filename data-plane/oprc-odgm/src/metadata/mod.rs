@@ -43,11 +43,7 @@ impl OprcMetaManager {
         col_name: &str,
     ) -> Option<Vec<ShardReplicaGroup>> {
         let collections = self.collections.read().await;
-        if let Some(col) = collections.get(col_name) {
-            return Some(col.shards.clone());
-        } else {
-            return None;
-        }
+        collections.get(col_name).map(|col| col.shards.clone())
     }
 
     async fn update_local_shards(&self) {
@@ -114,7 +110,7 @@ impl OprcMetaManager {
                     replica: replica_shard_ids.clone(),
                     replica_owner: replica_owner_ids.clone(),
                     shard_type: request.shard_type.clone(),
-                    invocations: invocations,
+                    invocations,
                     options: request.options.clone(),
                     ..Default::default()
                 };
@@ -137,7 +133,7 @@ impl OprcMetaManager {
         drop(shards);
         self.update_local_shards().await;
         let num = *self.receiver.borrow();
-        let _ = self.sender.send(num + 1).unwrap();
+        self.sender.send(num + 1).unwrap();
         Ok(CreateCollectionResponse {
             name: name.into(),
             ..Default::default()
@@ -184,11 +180,10 @@ impl OprcMetaManager {
             tokio_stream::wrappers::WatchStream::new(self.receiver.clone());
         tokio::spawn(async move {
             loop {
-                if let Some(d) = stream.next().await {
-                    if let Err(_) = tx.send(d) {
+                if let Some(d) = stream.next().await
+                    && tx.send(d).is_err() {
                         break;
                     }
-                }
             }
         });
         rx

@@ -91,15 +91,15 @@ impl std::hash::Hash for ObjectData {
     }
 }
 
-impl Into<ObjData> for ObjectData {
-    fn into(self) -> ObjData {
+impl From<ObjectData> for ObjData {
+    fn from(val: ObjectData) -> Self {
         ObjData {
-            entries: self
+            entries: val
                 .entries
                 .into_iter()
                 .map(|(k, v)| (k, v.into_val()))
                 .collect(),
-            event: self.event,
+            event: val.event,
             ..Default::default()
         }
     }
@@ -264,7 +264,7 @@ pub fn merge_data(
             }
             ValType::CrdtMap => {
                 let mut v1_doc = AutoCommit::load(&v1.data[..])?;
-                let mut v2_doc = AutoCommit::load(&&v2.data[..])?;
+                let mut v2_doc = AutoCommit::load(&v2.data[..])?;
                 v1_doc.merge(&mut v2_doc)?;
                 v1.data = v1_doc.save();
             }
@@ -294,7 +294,7 @@ pub(crate) fn merge_data_owned(
             }
             ValType::CrdtMap => {
                 let mut v1_doc = AutoCommit::load(&v1.data[..])?;
-                let mut v2_doc = AutoCommit::load(&&v2.data[..])?;
+                let mut v2_doc = AutoCommit::load(&v2.data[..])?;
                 v1_doc.merge(&mut v2_doc)?;
                 v1.data = v1_doc.save();
             }

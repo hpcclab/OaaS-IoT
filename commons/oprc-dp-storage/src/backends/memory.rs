@@ -748,12 +748,11 @@ impl crate::ApplicationDataStorage for MemoryStorage {
         for (idx, (key, value)) in
             data.range((start_bound, end_bound)).enumerate()
         {
-            if let Some(max) = limit {
-                if idx >= max {
+            if let Some(max) = limit
+                && idx >= max {
                     next_key = Some(key.clone());
                     break;
                 }
-            }
             results.push((key.clone(), value.clone()));
         }
 
@@ -932,14 +931,13 @@ impl crate::ApplicationReadTransaction for MemoryTransaction {
         let start_key = StorageValue::from_slice(start);
         let end_key = StorageValue::from_slice(end);
         for op in &self.operations {
-            if let TransactionOperation::Put { key, value } = op {
-                if key >= &start_key && key < &end_key {
+            if let TransactionOperation::Put { key, value } = op
+                && key >= &start_key && key < &end_key {
                     // Check if we already included this key from storage
                     if !results.iter().any(|(k, _)| k == key) {
                         results.push((key.clone(), value.clone()));
                     }
                 }
-            }
         }
 
         // Sort results by key

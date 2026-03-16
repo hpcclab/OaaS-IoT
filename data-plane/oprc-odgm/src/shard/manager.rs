@@ -77,11 +77,10 @@ impl UnifiedShardManager {
         primary_id: Option<ShardId>,
     ) -> Result<ArcUnifiedObjectShard, ShardError> {
         // Try to get the primary shard first
-        if let Some(primary_id) = primary_id {
-            if let Some(shard) = self.get_shard(primary_id) {
+        if let Some(primary_id) = primary_id
+            && let Some(shard) = self.get_shard(primary_id) {
                 return Ok(shard);
             }
-        }
 
         // Fallback to any available shard
         self.get_any_shard(shard_ids)
@@ -139,11 +138,9 @@ impl UnifiedShardManager {
         {
             if let Some(offloader) =
                 crate::wasm_bridge::setup_wasm_offloader(&metadata, arc_shard.clone()).await
-            {
-                if let Err(_) = arc_shard.set_local_offloader(offloader) {
+                && let Err(_) = arc_shard.set_local_offloader(offloader) {
                     tracing::warn!(shard_id, "WASM offloader could not be set (already configured)");
                 }
-            }
         }
 
         // Start network now that we have an Arc (allows network handlers to hold Arc<dyn ObjectShard>)

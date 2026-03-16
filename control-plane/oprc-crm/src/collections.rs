@@ -43,8 +43,8 @@ pub fn build_collection_request(
             // Patterns we upgrade: http://service(/|:port/) or http://service-fn-#(:80)?/ .
             // We avoid modifying if already contains a dot (likely FQDN or external host).
             let mut norm_url = url.clone();
-            if let Some(stripped) = url.strip_prefix("http://") {
-                if !stripped.contains('.') {
+            if let Some(stripped) = url.strip_prefix("http://")
+                && !stripped.contains('.') {
                     // Extract service token up to first '/'
                     let (svc_part, rest) = stripped
                         .split_once('/')
@@ -63,13 +63,12 @@ pub fn build_collection_request(
                         "http://{}.{}.svc.cluster.local{}",
                         svc_core,
                         namespace,
-                        if rest == "" { "/".into() } else { rest }
+                        if rest.is_empty() { "/".into() } else { rest }
                     );
                     if !norm_url.ends_with('/') {
                         norm_url.push('/');
                     }
                 }
-            }
             routes.insert(
                 id.clone(),
                 FuncInvokeRoute {
@@ -142,12 +141,11 @@ fn validate_assignments(
             warn!(partition=%idx, expected=%replica_count, actual=%a.shard_ids.len(), "shard id count mismatch");
             return false;
         }
-        if let Some(p) = a.primary {
-            if !a.shard_ids.contains(&p) {
+        if let Some(p) = a.primary
+            && !a.shard_ids.contains(&p) {
                 warn!(partition=%idx, primary=%p, "primary not in shard_ids");
                 return false;
             }
-        }
         for sid in &a.shard_ids {
             if !seen_shards.insert(*sid) {
                 warn!(partition=%idx, shard_id=%sid, "duplicate shard id across partitions");

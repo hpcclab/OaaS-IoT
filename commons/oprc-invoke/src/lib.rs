@@ -47,7 +47,7 @@ impl Invoker {
         let cm = self.conn.clone();
         tokio::spawn(async move {
             loop {
-                tokio::time::sleep(Duration::from_secs(interval as u64)).await;
+                tokio::time::sleep(Duration::from_secs(interval)).await;
                 let states = cm.get_states().await;
                 info!("pool state {:?}", states);
             }
@@ -94,9 +94,9 @@ impl From<mobc::Error<OffloadError>> for OffloadError {
     }
 }
 
-impl Into<tonic::Status> for OffloadError {
-    fn into(self) -> tonic::Status {
-        match self {
+impl From<OffloadError> for tonic::Status {
+    fn from(val: OffloadError) -> Self {
+        match val {
             OffloadError::GrpcError(status) => status,
             OffloadError::GrpcConnectError(error) => {
                 Status::unavailable(error.to_string())

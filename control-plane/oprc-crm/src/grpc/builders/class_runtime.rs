@@ -159,9 +159,7 @@ impl ClassRuntimeBuilder {
         &self,
         cfg: &oprc_grpc::proto::deployment::OdgmConfig,
     ) -> Option<InvocationsSpec> {
-        if cfg.invocations.is_none() {
-            return None;
-        }
+        cfg.invocations.as_ref()?;
         let inv = cfg.invocations.as_ref().unwrap();
         // Build index from function_key -> (idx, port, Option<wasm_module_url>) for URL synthesis
         let total = self.du.functions.len();

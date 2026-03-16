@@ -364,7 +364,7 @@ where
         );
 
         Ok(Self {
-            shard_id: shard_id,
+            shard_id,
             shard_metadata,
             raft,
             store: app_storage,

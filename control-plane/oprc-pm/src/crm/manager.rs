@@ -82,8 +82,8 @@ impl CrmManager {
         if let Some(cached) = {
             let map = self.health_cache.read().await;
             map.get(cluster_name).cloned()
-        } {
-            if cached.1.elapsed() < self.health_cache_ttl {
+        }
+            && cached.1.elapsed() < self.health_cache_ttl {
                 // Only serve cached entries if they are healthy
                 if cached.0.status == "Healthy" {
                     debug!(cluster=%cluster_name, "Serving health from cache");
@@ -92,7 +92,6 @@ impl CrmManager {
                     debug!(cluster=%cluster_name, status=%cached.0.status, "Ignoring unhealthy cached health");
                 }
             }
-        }
 
         let client = self.get_client(cluster_name).await?;
 
@@ -180,7 +179,7 @@ impl CrmManager {
         };
 
         for cluster_name in &clusters_to_query {
-            if let Ok(client) = self.get_client(&cluster_name).await {
+            if let Ok(client) = self.get_client(cluster_name).await {
                 match client.list_class_runtimes(filter.clone()).await {
                     Ok(mut records) => {
                         // Tag records with their cluster information
