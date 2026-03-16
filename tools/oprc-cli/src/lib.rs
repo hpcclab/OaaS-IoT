@@ -160,8 +160,9 @@ pub async fn run(cli: OprcCli) {
         #[cfg(feature = "dev-server")]
         OprcCommands::Dev { opt } => match opt {
             types::DevCommands::Serve { config, port } => {
-                let mut dev_config =
-                    oprc_dev_server::config::DevServerConfig::from_file(config)
+                let p = port.unwrap_or(8080);
+                let dev_config =
+                    oprc_dev_server::config::DevServerConfig::from_file(config, p)
                         .unwrap_or_else(|e| {
                             eprintln!(
                                 "Failed to load config {:?}: {}",
@@ -169,9 +170,6 @@ pub async fn run(cli: OprcCli) {
                             );
                             process::exit(1);
                         });
-                if let Some(p) = port {
-                    dev_config.port = *p;
-                }
                 if let Err(e) = oprc_dev_server::start(dev_config).await {
                     eprintln!("Dev server failed: {}", e);
                     process::exit(1);

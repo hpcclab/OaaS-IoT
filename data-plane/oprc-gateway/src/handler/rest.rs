@@ -40,7 +40,7 @@ fn inject_trace_context(options: &mut HashMap<String, String>) {
     if let Some(tp) = options.get("traceparent") {
         tracing::info!(traceparent = %tp, "Injected trace context");
     } else {
-        tracing::warn!("No traceparent injected - propagator may not be set");
+        tracing::debug!("No traceparent injected - propagator may not be set");
     }
 }
 

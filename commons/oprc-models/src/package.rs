@@ -133,6 +133,7 @@ pub struct FunctionBinding {
     pub name: String,
     #[validate(length(min = 1, message = "Function key cannot be empty"))]
     pub function_key: String,
+    #[serde(default)]
     pub access_modifier: FunctionAccessModifier,
     #[serde(default)]
     pub stateless: bool,

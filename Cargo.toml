@@ -127,7 +127,7 @@ tonic-build = "0.14"
 tonic-prost = "0.14"
 tonic-prost-build = "0.14"
 tonic-reflection = "0.14"
-tonic-tracing-opentelemetry = "0.32.1"
+tonic-tracing-opentelemetry = "0.32"
 tower = "0.5"
 tower-http = { version = "0.6.8", features = ["cors", "trace", "fs"] }
 tracing = "0.1"
@@ -140,8 +140,8 @@ test-log = { version = "0.2", features = ["trace"] }
 tokio-test = "0.4"
 validator = { version = "0.20", features = ["derive"] }
 wiremock = "0.6"
-zenoh = { version = "1.7.2" }
-zenoh-config = { version = "1.7.2" }
+zenoh = { version = "=1.8" }
+zenoh-config = { version = "=1.8" }
 nanoid = "0.4"
 wasmtime = { version = "42.0.1", features = ["component-model", "async", "anyhow"] }
 wasmtime-wasi = { version = "42.0.1" }
@@ -177,7 +177,7 @@ web-sys = "0.3"
 js-sys = "0.3"
 serde-wasm-bindgen = "0.6"
 gloo-timers = "0.3"
-wit-bindgen = "0.53.1"
+wit-bindgen = "0.54"
 wat = "1.245"
 
 [profile.release]

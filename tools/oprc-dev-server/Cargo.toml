@@ -14,10 +14,12 @@ frontend = ["dep:rust-embed", "dep:mime_guess"]
 [dependencies]
 anyhow = { workspace = true }
 axum = { workspace = true }
+chrono = { workspace = true }
 envconfig = { workspace = true }
 http = { workspace = true }
 oprc-gateway = { path = "../../data-plane/oprc-gateway" }
 oprc-grpc = { workspace = true, features = ["util"] }
+oprc-models = { workspace = true }
 oprc-odgm = { workspace = true, features = ["wasm"] }
 oprc-zenoh = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

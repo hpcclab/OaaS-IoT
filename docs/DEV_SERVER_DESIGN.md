@@ -18,7 +18,7 @@ Developing OaaS applications today requires deploying a full Kubernetes cluster 
 
 - Raft/MST replication (single-node only).
 - Kubernetes CRD reconciliation.
-- Package Manager deployment workflows (collections are configured via YAML).
+- Package Manager deployment workflows (classes are configured via OPackage YAML).
 - Production performance tuning.
 - Hot-reload of WASM modules (restart the server to pick up changes).
 
@@ -83,31 +83,38 @@ The key design decision is **how the gateway communicates with shards**. We use 
 
 ## Configuration Format
 
-Developers write a `oaas-dev.yaml` (or pass `--config <path>`):
+The dev server uses the standard `OPackage` YAML format — the same schema used for
+deploying packages to the control plane. Port is specified via the `--port` CLI flag (default 8080).
 
 ```yaml
-# oaas-dev.yaml
-port: 8080
-
-collections:
-  - name: "PixelRecord"
-    partition_id: 0
-    functions:
-      - id: "randomColor"
-        wasm: "./target/wasm32-wasip2/release/pixel_func.wasm"
-      - id: "setColor"
-        wasm: "./target/wasm32-wasip2/release/pixel_func.wasm"
-
-  - name: "GameOfLife"
-    partition_id: 0
-    functions:
-      - id: "golStep"
-        wasm: "./target/wasm32-wasip2/release/gol_func.wasm"
+# oaas-package.yaml
+name: pixel-canvas
+classes:
+  - key: PixelRecord
+    function_bindings:
+      - name: randomColor
+        function_key: pixel-func
+      - name: setColor
+        function_key: pixel-func
+  - key: GameOfLife
+    function_bindings:
+      - name: golStep
+        function_key: gol-func
+functions:
+  - key: pixel-func
+    function_type: WASM
+    provision_config:
+      wasm_module_url: "./target/wasm32-wasip2/release/pixel_func.wasm"
+  - key: gol-func
+    function_type: WASM
+    provision_config:
+      wasm_module_url: "./target/wasm32-wasip2/release/gol_func.wasm"
 ```
 
-The dev server translates each collection entry into:
-- A `CreateCollectionRequest` with partition/shard metadata
-- `ShardMetadata.invocations.fn_routes` entries with `wasm://` URLs
+The dev server translates each `OClass` into:
+- A `CreateCollectionRequest` (collection name = class key)
+- `ShardMetadata.invocations.fn_routes` entries with `wasm://` URLs resolved from
+  the `OFunction.provision_config.wasm_module_url` referenced by each `FunctionBinding`
 - WASM module loading via `setup_wasm_offloader()`
 
 ---
@@ -115,12 +122,12 @@ The dev server translates each collection entry into:
 ## Startup Sequence
 
 ```
-1. Parse oaas-dev.yaml
+1. Parse OPackage YAML (oaas-package.yaml)
 2. Create Zenoh session (peer mode, no external peers)
 3. Create ODGM via start_raw_server()
    └── Pool, MetaManager, ShardManager, watch stream
-4. For each collection in config:
-   a. Build CreateCollectionRequest with fn_routes
+4. For each class in OPackage:
+   a. Build CreateCollectionRequest with fn_routes from function bindings
    b. metadata_manager.create_collection(req)
    c. Wait for shard to be created (watch stream)
    d. setup_wasm_offloader() on the shard
@@ -223,11 +230,11 @@ pub struct DevArgs {
 pub enum DevCommands {
     /// Start the local dev server
     Serve {
-        /// Path to oaas-dev.yaml config file
-        #[arg(short, long, default_value = "oaas-dev.yaml")]
+        /// Path to OaaS package YAML config file
+        #[arg(short, long, default_value = "oaas-package.yaml")]
         config: PathBuf,
 
-        /// Port to listen on (overrides config)
+        /// Port to listen on (default 8080)
         #[arg(short, long)]
         port: Option<u16>,
     },
@@ -334,7 +341,7 @@ This works because both shards share the same Zenoh session. The `ObjectProxy` i
 | Feature | Why Omitted |
 |---------|-------------|
 | Replication (Raft/MST) | Single-node dev; would add complexity without benefit |
-| Package Manager | No deploy workflow needed; collections configured directly via YAML |
+| Package Manager | No deploy workflow needed; OPackage YAML is interpreted directly |
 | CRM / K8s controller | No Kubernetes in local dev |
 | OpenTelemetry export | Could be added later; not needed for basic dev loop |
 | Persistent storage | In-memory only; dev server is ephemeral. Could add RocksDB later |
@@ -365,7 +372,7 @@ This works because both shards share the same Zenoh session. The `ObjectProxy` i
 - Web UI accessible at `http://localhost:8080/`
 
 ### Phase 4: Developer Experience Polish
-- `oprc dev init` — scaffold `oaas-dev.yaml` from project structure
+- `oprc dev init` — scaffold `oaas-package.yaml` from project structure
 - Watch mode for YAML config changes (restart shards)
 - Pretty startup banner showing loaded collections and routes
 - Error messages with actionable suggestions (e.g., "WASM module not found at ./target/...")

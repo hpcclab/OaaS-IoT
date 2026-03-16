@@ -827,8 +827,8 @@ mod tests {
 pub enum DevCommands {
     /// Start the local dev server
     Serve {
-        /// Path to oaas-dev.yaml config file
-        #[arg(short, long, default_value = "oaas-dev.yaml")]
+        /// Path to OaaS package YAML config file
+        #[arg(short, long, default_value = "oaas-package.yaml")]
         config: PathBuf,
 
         /// Port to listen on (overrides config file)

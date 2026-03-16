@@ -87,8 +87,7 @@ pub fn build_router(
     }
 
     router
-        .route("/{*path}", get(no_found))
-        .route("/", get(no_found))
+        .fallback(get(no_found))
         .layer(Extension(object_proxy))
         .layer(Extension(request_timeout))
         .layer(Extension(0u32))

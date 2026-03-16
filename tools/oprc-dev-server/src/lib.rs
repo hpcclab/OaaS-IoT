@@ -7,11 +7,22 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
-use config::DevServerConfig;
+use config::{DevServerConfig, package_to_create_requests};
 use oprc_odgm::{ObjectDataGridManager, OdgmConfig};
 use oprc_zenoh::pool::Pool;
 use tower_http::cors::CorsLayer;
 use tracing::info;
+
+/// Health check handler matching the PM /health contract.
+async fn health_check() -> axum::Json<serde_json::Value> {
+    axum::Json(serde_json::json!({
+        "status": "healthy",
+        "service": "oprc-dev-server",
+        "version": env!("CARGO_PKG_VERSION"),
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "storage": { "status": "ok" }
+    }))
+}
 
 /// Start the dev server with the given configuration.
 pub async fn start(config: DevServerConfig) -> anyhow::Result<()> {
@@ -33,20 +44,20 @@ pub async fn start(config: DevServerConfig) -> anyhow::Result<()> {
             .map_err(|e| anyhow::anyhow!("{}", e))?;
     let odgm = Arc::new(odgm);
 
-    // 3. Create collections from config
-    for collection in &config.collections {
-        let req = collection.to_create_request();
+    // 3. Create collections from OPackage classes
+    let create_requests = package_to_create_requests(&config.package);
+    for req in &create_requests {
         info!(
-            collection = %collection.name,
-            functions = collection.functions.len(),
+            collection = %req.name,
+            functions = req.invocations.as_ref().map_or(0, |inv| inv.fn_routes.len()),
             "Creating collection"
         );
-        odgm.metadata_manager.create_collection(req).await?;
+        odgm.metadata_manager.create_collection(req.clone()).await?;
     }
 
     // Wait for shards to be created (poll with timeout).
     // WASM compilation of large modules can take 10+ seconds.
-    let expected_shards = config.collections.len() as u32;
+    let expected_shards = create_requests.len() as u32;
     let mut attempts = 0;
     while attempts < 600 {
         let stats = odgm.shard_manager.get_stats().await;
@@ -58,11 +69,9 @@ pub async fn start(config: DevServerConfig) -> anyhow::Result<()> {
     }
 
     // Verify shards are created and ready
-    for collection in &config.collections {
-        let shards = odgm
-            .shard_manager
-            .get_shards_for_collection(&collection.name)
-            .await;
+    for cls in &config.package.classes {
+        let shards =
+            odgm.shard_manager.get_shards_for_collection(&cls.key).await;
         if let Some(shard) = shards.first() {
             // Wait for shard readiness (WASM module loading, etc.)
             let mut ready_attempts = 0;
@@ -74,14 +83,14 @@ pub async fn start(config: DevServerConfig) -> anyhow::Result<()> {
                 ready_attempts += 1;
             }
             info!(
-                collection = %collection.name,
+                collection = %cls.key,
                 shard_id = shard.meta().id,
                 ready = *shard.watch_readiness().borrow(),
                 "Shard ready"
             );
         } else {
             tracing::warn!(
-                collection = %collection.name,
+                collection = %cls.key,
                 "Shard not found after creation"
             );
         }
@@ -122,11 +131,12 @@ async fn build_dev_router(
     let gateway_proxy = Router::new().nest("/api/gateway", gateway.clone());
 
     // Stub PM API for frontend (/api/v1/deployments, etc.)
-    let stub = stub_api::build_stub_api(config);
+    let stub = stub_api::build_stub_api(&config.package);
 
     let router = gateway
         .merge(gateway_proxy)
         .merge(stub)
+        // .route("/health", axum::routing::get(health_check))
         .layer(CorsLayer::permissive());
 
     // Frontend fallback (embedded static files)
@@ -137,18 +147,22 @@ async fn build_dev_router(
 }
 
 fn print_banner(config: &DevServerConfig, port: u16) {
-    info!("╔══════════════════════════════════════════╗");
-    info!("║       OaaS Local Dev Server              ║");
-    info!("╠══════════════════════════════════════════╣");
-    info!("║  http://localhost:{:<24}║", port);
-    info!("╚══════════════════════════════════════════╝");
-    for c in &config.collections {
-        let fn_names: Vec<&str> =
-            c.functions.iter().map(|f| f.id.as_str()).collect();
+    println!("╔══════════════════════════════════════════╗");
+    println!("║       OaaS Local Dev Server              ║");
+    println!("╠══════════════════════════════════════════╣");
+    println!("║  http://localhost:{:<23}║", port);
+    println!("╚══════════════════════════════════════════╝");
+    println!("  Package: {}", config.package.name);
+    for cls in &config.package.classes {
+        let fn_names: Vec<&str> = cls
+            .function_bindings
+            .iter()
+            .map(|b| b.name.as_str())
+            .collect();
         if fn_names.is_empty() {
-            info!("  Collection: {} (no functions)", c.name);
+            println!("  Class: {} (no functions)", cls.key);
         } else {
-            info!("  Collection: {} → [{}]", c.name, fn_names.join(", "));
+            println!("  Class: {} → [{}]", cls.key, fn_names.join(", "));
         }
     }
 }

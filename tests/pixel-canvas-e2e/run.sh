@@ -16,7 +16,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-CONFIG="$SCRIPT_DIR/oaas-dev.yaml"
+CONFIG="$SCRIPT_DIR/oaas-package.yaml"
 PORT=8089
 BASE="http://localhost:$PORT"
 CLS="pixel-canvas"
