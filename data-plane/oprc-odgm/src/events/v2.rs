@@ -19,7 +19,10 @@ mod base64_opt {
     use base64::{Engine, engine::general_purpose::STANDARD};
     use serde::Serializer;
 
-    pub fn serialize<S>(data: &Option<Vec<u8>>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(
+        data: &Option<Vec<u8>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {

@@ -514,12 +514,13 @@ where
 
         // Check expected version for CAS
         if let Some(expected) = expected_version
-            && metadata.object_version != expected {
-                return Err(ShardError::VersionMismatch {
-                    expected,
-                    actual: metadata.object_version,
-                });
-            }
+            && metadata.object_version != expected
+        {
+            return Err(ShardError::VersionMismatch {
+                expected,
+                actual: metadata.object_version,
+            });
+        }
 
         // Increment version once for the entire batch
         metadata.increment_version();

@@ -43,7 +43,9 @@ where
     /// before falling back to the remote gRPC offloader.
     pub fn with_local_offloader(
         self,
-        offloader: Arc<dyn oprc_invoke::handler::InvocationExecutor + Send + Sync>,
+        offloader: Arc<
+            dyn oprc_invoke::handler::InvocationExecutor + Send + Sync,
+        >,
     ) -> Self {
         let _ = self.local_offloader.set(offloader);
         self
@@ -54,8 +56,13 @@ where
     /// create the adapter (circular dependency solved via OnceLock).
     pub fn set_local_offloader(
         &self,
-        offloader: Arc<dyn oprc_invoke::handler::InvocationExecutor + Send + Sync>,
-    ) -> Result<(), Arc<dyn oprc_invoke::handler::InvocationExecutor + Send + Sync>> {
+        offloader: Arc<
+            dyn oprc_invoke::handler::InvocationExecutor + Send + Sync,
+        >,
+    ) -> Result<
+        (),
+        Arc<dyn oprc_invoke::handler::InvocationExecutor + Send + Sync>,
+    > {
         self.local_offloader.set(offloader)
     }
 
@@ -125,9 +132,10 @@ where
             .map_err(ShardError::from)?;
         for (k, _) in chunk {
             if let Some((obj_id, _)) = parse_granular_key(k.as_slice())
-                && obj_id == normalized_id {
-                    all.push(k.into_vec());
-                }
+                && obj_id == normalized_id
+            {
+                all.push(k.into_vec());
+            }
         }
         // Drain remaining pages if any
         while let Some(cur) = cursor.take() {
@@ -139,9 +147,10 @@ where
                 .map_err(ShardError::from)?;
             for (k, _) in chunk {
                 if let Some((obj_id, _)) = parse_granular_key(k.as_slice())
-                    && obj_id == normalized_id {
-                        all.push(k.into_vec());
-                    }
+                    && obj_id == normalized_id
+                {
+                    all.push(k.into_vec());
+                }
             }
             cursor = next;
         }
@@ -414,32 +423,33 @@ where
 
         // Emit V2 per-entry delete events (one per previously existing key)
         if let Some(v2) = &self.v2_dispatcher
-            && let Some(entry) = existing_entry {
-                // Collect changed keys from both numeric and string maps
-                let mut changed: Vec<ChangedKey> =
-                    Vec::with_capacity(entry.entries.len());
-                for (k, _v) in entry.entries.iter() {
-                    changed.push(ChangedKey {
-                        key_canonical: k.clone(),
-                        action: MutAction::Delete,
-                        value: None,
-                    });
-                }
-                if !changed.is_empty() {
-                    // Use pre-deletion event config so delete triggers can be evaluated
-                    let event_cfg = predelete_event_cfg.clone();
-                    let ctx = MutationContext::new(
-                        normalized_id.clone(),
-                        self.class_id().to_string(),
-                        self.partition_id_u16(),
-                        version_before,
-                        version_after,
-                        changed,
-                    )
-                    .with_event_config(event_cfg);
-                    v2.try_send(ctx);
-                }
+            && let Some(entry) = existing_entry
+        {
+            // Collect changed keys from both numeric and string maps
+            let mut changed: Vec<ChangedKey> =
+                Vec::with_capacity(entry.entries.len());
+            for (k, _v) in entry.entries.iter() {
+                changed.push(ChangedKey {
+                    key_canonical: k.clone(),
+                    action: MutAction::Delete,
+                    value: None,
+                });
             }
+            if !changed.is_empty() {
+                // Use pre-deletion event config so delete triggers can be evaluated
+                let event_cfg = predelete_event_cfg.clone();
+                let ctx = MutationContext::new(
+                    normalized_id.clone(),
+                    self.class_id().to_string(),
+                    self.partition_id_u16(),
+                    version_before,
+                    version_after,
+                    changed,
+                )
+                .with_event_config(event_cfg);
+                v2.try_send(ctx);
+            }
+        }
 
         Ok(())
     }
@@ -494,31 +504,32 @@ where
 
         // Emit V2 events if dispatcher exists
         if let Some(v2) = &self.v2_dispatcher
-            && let Some(entry) = existing_entry {
-                let mut changed: Vec<ChangedKey> =
-                    Vec::with_capacity(entry.entries.len());
-                for (k, _v) in entry.entries.iter() {
-                    changed.push(ChangedKey {
-                        key_canonical: k.clone(),
-                        action: MutAction::Delete,
-                        value: None,
-                    });
-                }
-                if !changed.is_empty() {
-                    // Use pre-deletion event config so delete triggers can be evaluated
-                    let event_cfg = predelete_event_cfg.clone();
-                    let ctx = MutationContext::new(
-                        normalized_id.to_string(),
-                        self.class_id().to_string(),
-                        self.partition_id_u16(),
-                        version_before,
-                        version_after,
-                        changed,
-                    )
-                    .with_event_config(event_cfg);
-                    v2.try_send(ctx);
-                }
+            && let Some(entry) = existing_entry
+        {
+            let mut changed: Vec<ChangedKey> =
+                Vec::with_capacity(entry.entries.len());
+            for (k, _v) in entry.entries.iter() {
+                changed.push(ChangedKey {
+                    key_canonical: k.clone(),
+                    action: MutAction::Delete,
+                    value: None,
+                });
             }
+            if !changed.is_empty() {
+                // Use pre-deletion event config so delete triggers can be evaluated
+                let event_cfg = predelete_event_cfg.clone();
+                let ctx = MutationContext::new(
+                    normalized_id.to_string(),
+                    self.class_id().to_string(),
+                    self.partition_id_u16(),
+                    version_before,
+                    version_after,
+                    changed,
+                )
+                .with_event_config(event_cfg);
+                v2.try_send(ctx);
+            }
+        }
 
         Ok(())
     }
@@ -565,12 +576,13 @@ where
             match page.next_cursor {
                 Some(next_cursor) => {
                     if let Some(current) = &cursor
-                        && current == &next_cursor {
-                            return Err(ShardError::ConfigurationError(
+                        && current == &next_cursor
+                    {
+                        return Err(ShardError::ConfigurationError(
                                 "granular reconstruction encountered a stalled cursor"
                                     .into(),
                             ));
-                        }
+                    }
                     cursor = Some(next_cursor);
                 }
                 None => break,
