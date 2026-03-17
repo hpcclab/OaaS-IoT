@@ -48,7 +48,7 @@ async fn v2_create_update_delete_actions() {
         .await
         .expect("shard");
     shard.initialize().await.expect("init");
-    let mut rx = shard.v2_subscribe().expect("dispatcher");
+    let mut rx = shard.subscribe_events().expect("dispatcher");
     let oid = "obj::1";
     shard.set_entry(oid, "k", val("v1")).await.unwrap(); // create
     shard.set_entry(oid, "k", val("v2")).await.unwrap(); // update

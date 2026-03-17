@@ -23,7 +23,7 @@ use super::types::{
     GenericPagesResp, MstConfig, MstKey,
 };
 
-use crate::events::{ChangedKey, MutAction, MutationContext, V2DispatcherRef};
+use crate::events::{ChangedKey, EventDispatcherRef, MutAction, MutationContext};
 use crate::granular_key::{GranularRecord, parse_granular_key};
 
 type GenericMessageSerde = PostcardMsgSerde<GenericPageRangeMessage>;
@@ -116,7 +116,7 @@ where
     mst: Arc<RwLock<MerkleSearchTree<MstKey, T>>>,
     config: Arc<MstConfig<T>>,
     node_id: u64,
-    v2_dispatcher: Option<V2DispatcherRef>,
+    v2_dispatcher: Option<EventDispatcherRef>,
     cls_id: String,
     partition_id: u16,
 }
@@ -140,7 +140,7 @@ where
         mst: Arc<RwLock<MerkleSearchTree<MstKey, T>>>,
         config: Arc<MstConfig<T>>,
         node_id: u64,
-        v2_dispatcher: Option<V2DispatcherRef>,
+        v2_dispatcher: Option<EventDispatcherRef>,
         cls_id: String,
         partition_id: u16,
     ) -> Self {
@@ -180,7 +180,7 @@ async fn handle_page_update<T, S>(
     owner: u64,
     source_shard_id: u64,
     pages: Vec<GenericNetworkPage>,
-    v2_dispatcher: &Option<V2DispatcherRef>,
+    v2_dispatcher: &Option<EventDispatcherRef>,
     cls_id: &str,
     partition_id: u16,
 ) -> Result<(), MstError>

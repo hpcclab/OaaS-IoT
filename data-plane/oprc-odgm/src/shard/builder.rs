@@ -8,8 +8,8 @@ use tracing::info;
 
 use crate::{
     events::{
-        EventConfig, EventManagerImpl, TriggerProcessor, V2Dispatcher,
-        V2DispatcherRef,
+        EventConfig, EventDispatcher, EventDispatcherRef, EventManagerImpl,
+        TriggerProcessor,
     },
     replication::{
         ReplicationLayer,
@@ -701,7 +701,7 @@ fn build_event_dispatcher(
     session: &zenoh::Session,
     event_config: &Option<EventConfig>,
     event_pipeline_config: &EventPipelineConfig,
-) -> Option<V2DispatcherRef> {
+) -> Option<EventDispatcherRef> {
     if !event_pipeline_config.enabled {
         return None;
     }
@@ -716,7 +716,7 @@ fn build_event_dispatcher(
         None
     };
 
-    Some(V2Dispatcher::new_with_zenoh(
+    Some(EventDispatcher::new_with_zenoh(
         event_pipeline_config.queue_bound,
         event_pipeline_config.broadcast_bound,
         trigger_processor,

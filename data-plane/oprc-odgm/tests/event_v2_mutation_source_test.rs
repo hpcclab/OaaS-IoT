@@ -74,7 +74,7 @@ async fn v2_local_mutation_source_on_set() {
         .expect("shard");
     shard.initialize().await.expect("init");
 
-    let mut rx = shard.v2_subscribe().expect("v2 dispatcher present");
+    let mut rx = shard.subscribe_events().expect("v2 dispatcher present");
 
     // set_entry is a local operation
     shard.set_entry("obj1", "k1", val("hello")).await.unwrap();
@@ -111,7 +111,7 @@ async fn v2_local_mutation_source_on_delete() {
         .expect("shard");
     shard.initialize().await.expect("init");
 
-    let mut rx = shard.v2_subscribe().expect("v2 dispatcher present");
+    let mut rx = shard.subscribe_events().expect("v2 dispatcher present");
 
     // Create then delete
     shard.set_entry("obj2", "k1", val("v")).await.unwrap();

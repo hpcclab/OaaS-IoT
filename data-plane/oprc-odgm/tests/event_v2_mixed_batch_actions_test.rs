@@ -49,7 +49,7 @@ async fn v2_mixed_batch_actions() {
         .await
         .expect("shard");
     shard.initialize().await.expect("init");
-    let mut rx = shard.v2_subscribe().expect("dispatcher");
+    let mut rx = shard.subscribe_events().expect("dispatcher");
     let oid = "mix::1";
     shard.set_entry(oid, "existing", val("v1")).await.unwrap(); // first event create
     let evt1 =

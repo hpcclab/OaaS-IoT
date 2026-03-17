@@ -50,7 +50,7 @@ async fn v2_fanout_summary_when_over_cap() {
         .expect("shard");
     shard.initialize().await.expect("init");
 
-    let mut rx = shard.v2_subscribe().expect("v2 dispatcher present");
+    let mut rx = shard.subscribe_events().expect("v2 dispatcher present");
 
     // create object with two mutations in one batch
     let oid = "obj::cap";

@@ -66,10 +66,10 @@ where
         self.local_offloader.set(offloader)
     }
 
-    pub fn v2_subscribe(
+    pub fn subscribe_events(
         &self,
     ) -> Option<
-        tokio::sync::broadcast::Receiver<crate::events::v2::V2QueuedEvent>,
+        tokio::sync::broadcast::Receiver<crate::events::QueuedEvent>,
     > {
         self.v2_dispatcher.as_ref().map(|d| d.subscribe())
     }
@@ -167,8 +167,8 @@ where
         z_session: zenoh::Session,
         event_manager: Option<Arc<E>>,
         config: ShardOptions,
-        // Optionally pass V2 dispatcher
-        v2_dispatcher: Option<crate::events::V2DispatcherRef>,
+        // Optionally pass event dispatcher
+        v2_dispatcher: Option<crate::events::EventDispatcherRef>,
     ) -> Result<Self, ShardError> {
         debug!("Creating new full ObjectUnifiedShard");
         let config = Self::sanitize_config(config);

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::instrument;
 
-use crate::events::V2DispatcherRef;
+use crate::events::EventDispatcherRef;
 use crate::replication::{
     ReplicationError, ReplicationLayer, ReplicationModel, ReplicationResponse,
 };
@@ -38,7 +38,7 @@ pub struct MstReplicationLayer<
     readiness_sender: tokio::sync::watch::Sender<bool>,
     readiness_receiver: tokio::sync::watch::Receiver<bool>,
     #[allow(dead_code)]
-    v2_dispatcher: Option<V2DispatcherRef>,
+    v2_dispatcher: Option<EventDispatcherRef>,
 }
 
 impl<
@@ -81,7 +81,7 @@ impl<
         metadata: ShardMetadata,
         config: MstConfig<T>,
         zenoh_session: zenoh::Session,
-        v2_dispatcher: Option<V2DispatcherRef>,
+        v2_dispatcher: Option<EventDispatcherRef>,
     ) -> Self {
         tracing::debug!("Creating new MST replication layer");
 

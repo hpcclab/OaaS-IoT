@@ -47,7 +47,7 @@ async fn v2_basic_enqueue_and_receive() {
         .expect("shard");
     shard.initialize().await.expect("init");
 
-    let mut rx = shard.v2_subscribe().expect("v2 dispatcher present");
+    let mut rx = shard.subscribe_events().expect("v2 dispatcher present");
     shard.set_entry("1", "k1", val("v")).await.unwrap();
 
     let evt =

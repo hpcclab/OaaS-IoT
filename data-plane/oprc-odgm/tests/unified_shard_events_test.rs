@@ -408,7 +408,7 @@ async fn test_v2_dispatcher_emits_mutation_context()
     shard.initialize().await?;
 
     // If shard has no V2 dispatcher (since minimal path bypasses full factory), we cannot assert broadcast; skip gracefully.
-    let maybe_rx = shard.v2_subscribe();
+    let maybe_rx = shard.subscribe_events();
     if maybe_rx.is_none() {
         // Clean up env flag for other tests and exit early.
         eprintln!(
@@ -520,7 +520,7 @@ async fn test_v2_trigger_execution_records_in_test_tap()
             NoReplication<AnyStorage>,
             EventManagerImpl<AnyStorage>,
         >>()
-        .and_then(|s| s.v2_subscribe());
+        .and_then(|s| s.subscribe_events());
     if maybe_rx.is_none() {
         eprintln!("V2 dispatcher not available; skipping");
         return Ok(());
