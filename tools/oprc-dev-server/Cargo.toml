@@ -8,7 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [features]
-default = ["frontend"]
+default = []
 frontend = ["dep:rust-embed", "dep:mime_guess"]
 
 [dependencies]
