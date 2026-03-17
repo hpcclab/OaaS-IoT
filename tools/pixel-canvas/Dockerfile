@@ -4,7 +4,7 @@ FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 
 # Install dependencies (workspaces root + frontend only)
-COPY tools/pixel-canvas/package.json tools/pixel-canvas/package-lock.json ./
+COPY tools/pixel-canvas/package.json tools/pixel-canvas/package-lock.json tools/pixel-canvas/tsconfig.base.json ./
 COPY tools/pixel-canvas/frontend/package.json ./frontend/
 COPY tools/pixel-canvas/wasm-guest/package.json ./wasm-guest/
 RUN npm ci --workspace=frontend --ignore-scripts
