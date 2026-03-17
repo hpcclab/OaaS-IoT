@@ -7,7 +7,8 @@
 
 import { CANVAS_SIZE, CELL_PX } from "./types.js";
 import type { PixelMap } from "./types.js";
-import { fetchCanvas, paintBatch, subscribeToObject } from "./api.js";
+import { fetchCanvas, paintBatch, subscribeToObject, decodeChangeValue } from "./api.js";
+import type { WsEvent } from "./api.js";
 import { renderPixels } from "./render.js";
 
 export class AudienceCanvas {
@@ -175,8 +176,41 @@ export class AudienceCanvas {
       this.gatewayBase,
       this.gridX,
       this.gridY,
-      () => this.fetchAndRender()
+      (evt: WsEvent) => this.handleWsEvent(evt)
     );
+  }
+
+  /**
+   * Handle an incoming WS event.  If all changes carry inline values we
+   * apply the deltas directly (no HTTP round-trip).  Otherwise we fall back
+   * to a full fetchAndRender.
+   */
+  private handleWsEvent(evt: WsEvent): void {
+    let allHaveValues = true;
+    for (const change of evt.changes) {
+      if (change.key.startsWith("_")) continue;
+      if (change.action === "Delete") {
+        // Deletes never carry a value — apply directly
+        if (!this.dirty.has(change.key)) {
+          this.pixels.delete(change.key);
+        }
+        continue;
+      }
+      const color = decodeChangeValue(change);
+      if (color !== null) {
+        if (!this.dirty.has(change.key)) {
+          this.pixels.set(change.key, color);
+        }
+      } else {
+        allHaveValues = false;
+      }
+    }
+    if (allHaveValues) {
+      this.render();
+      this.setStatus(true, "synced");
+    } else {
+      this.fetchAndRender();
+    }
   }
 
   destroy(): void {

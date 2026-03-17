@@ -60,6 +60,12 @@ pub struct OClass {
     #[validate(nested)]
     #[serde(default)]
     pub function_bindings: Vec<FunctionBinding>,
+    /// Arbitrary key-value options forwarded to the data plane as
+    /// `ShardMetadata.options`. Recognised keys include
+    /// `zenoh_event_publish`, `zenoh_event_locality`, and
+    /// `ws_event_include_values`.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub options: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Validate)]

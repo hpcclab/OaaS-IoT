@@ -7,8 +7,8 @@
 
 import { CANVAS_SIZE } from "./types.js";
 import type { PixelMap } from "./types.js";
-import { fetchCanvas, invokeGolStep, subscribeToPartition } from "./api.js";
-import type { FetchResult } from "./api.js";
+import { fetchCanvas, invokeGolStep, subscribeToPartition, decodeChangeValue } from "./api.js";
+import type { FetchResult, WsEvent } from "./api.js";
 import { renderPixels } from "./render.js";
 import { AudienceCanvas } from "./canvas.js";
 
@@ -158,22 +158,47 @@ export class PresenterMosaic {
   }
 
   private startWebSocket(): void {
-    this.wsSub = subscribeToPartition(this.gatewayBase, (evt) => {
+    this.wsSub = subscribeToPartition(this.gatewayBase, (evt: WsEvent) => {
       // Parse tile coordinates from object_id (format: "canvas-{x}-{y}")
       const m = evt.object_id.match(/^canvas-(\d+)-(\d+)$/);
       if (!m) return;
       const x = parseInt(m[1], 10);
       const y = parseInt(m[2], 10);
       if (x >= this.cols || y >= this.rows) return;
-      // Refresh only the affected tile
-      fetchCanvas(this.gatewayBase, x, y).then((result) => {
-        if (!result.ok) return;
-        this.pixelMaps[x][y] = result.pixels;
+
+      // Try to apply deltas directly from inline values
+      let allHaveValues = true;
+      const pixels = this.pixelMaps[x][y];
+      for (const change of evt.changes) {
+        if (change.key.startsWith("_")) continue;
+        if (change.action === "Delete") {
+          pixels.delete(change.key);
+          continue;
+        }
+        const color = decodeChangeValue(change);
+        if (color !== null) {
+          pixels.set(change.key, color);
+        } else {
+          allHaveValues = false;
+        }
+      }
+
+      if (allHaveValues) {
         const el = this.canvasEl(x, y);
-        if (el) renderPixels(el, result.pixels, this.cellSize);
+        if (el) renderPixels(el, pixels, this.cellSize);
         this.statusEl.textContent = `● live — ${new Date().toLocaleTimeString()}`;
         this.statusEl.style.color = "#22c55e";
-      });
+      } else {
+        // Fall back to full fetch for this tile
+        fetchCanvas(this.gatewayBase, x, y).then((result) => {
+          if (!result.ok) return;
+          this.pixelMaps[x][y] = result.pixels;
+          const el = this.canvasEl(x, y);
+          if (el) renderPixels(el, result.pixels, this.cellSize);
+          this.statusEl.textContent = `● live — ${new Date().toLocaleTimeString()}`;
+          this.statusEl.style.color = "#22c55e";
+        });
+      }
     });
   }
 

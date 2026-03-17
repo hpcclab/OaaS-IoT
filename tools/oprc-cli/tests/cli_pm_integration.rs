@@ -66,6 +66,7 @@ async fn seed_package(pm_base: &str) -> anyhow::Result<()> {
                 parameters: vec![],
             }],
             state_spec: None,
+            options: Default::default(),
         }],
         functions: vec![oprc_models::OFunction {
             key: "hello".to_string(),

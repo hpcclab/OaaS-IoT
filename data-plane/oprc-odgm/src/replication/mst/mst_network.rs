@@ -306,6 +306,7 @@ where
                         vec![ChangedKey {
                             key_canonical: entry_key.to_owned(),
                             action: MutAction::Update,
+                            value: None,
                         }],
                     );
                     dispatcher.try_send(ctx);

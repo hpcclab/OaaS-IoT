@@ -422,6 +422,7 @@ where
                     changed.push(ChangedKey {
                         key_canonical: k.clone(),
                         action: MutAction::Delete,
+                        value: None,
                     });
                 }
                 if !changed.is_empty() {
@@ -500,6 +501,7 @@ where
                     changed.push(ChangedKey {
                         key_canonical: k.clone(),
                         action: MutAction::Delete,
+                        value: None,
                     });
                 }
                 if !changed.is_empty() {

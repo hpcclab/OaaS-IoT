@@ -4214,6 +4214,7 @@ dependencies = [
  "async-trait",
  "automerge",
  "axum",
+ "base64 0.22.1",
  "byteorder",
  "chrono",
  "criterion",

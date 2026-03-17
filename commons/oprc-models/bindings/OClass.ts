@@ -2,4 +2,11 @@
 import type { FunctionBinding } from "./FunctionBinding";
 import type { StateSpecification } from "./StateSpecification";
 
-export type OClass = { key: string, description: string | null, state_spec: StateSpecification | null, function_bindings: Array<FunctionBinding>, };
+export type OClass = { key: string, description: string | null, state_spec: StateSpecification | null, function_bindings: Array<FunctionBinding>, 
+/**
+ * Arbitrary key-value options forwarded to the data plane as
+ * `ShardMetadata.options`. Recognised keys include
+ * `zenoh_event_publish`, `zenoh_event_locality`, and
+ * `ws_event_include_values`.
+ */
+options?: { [key in string]: string }, };

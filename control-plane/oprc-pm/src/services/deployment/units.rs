@@ -198,7 +198,7 @@ pub fn create_deployment_units_for_env(
                 .or(Some(requirements.target_replicas)),
             shard_type: o.shard_type.clone(),
             invocations: inv_routes,
-            options: std::collections::HashMap::new(),
+            options: class.options.clone(),
             log: o.log.clone(),
             env_node_ids: env_map,
             odgm_node_id: ids_for_env.first().cloned(),

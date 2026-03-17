@@ -66,6 +66,10 @@ pub struct EventPipelineConfig {
     /// Controls whether events stay in-process (`SessionLocal`), go to remote
     /// peers only (`Remote`), or both (`Any`). Default: `Remote`.
     pub zenoh_event_locality: zenoh::sample::Locality,
+    /// When true, `ChangedKey.value` is populated with the raw entry bytes
+    /// for create/update mutations, allowing WS consumers to apply deltas
+    /// without fetching the full object.
+    pub include_entry_values: bool,
 }
 
 impl Default for EventPipelineConfig {
@@ -109,6 +113,10 @@ impl EventPipelineConfig {
             mst_sync_events,
             zenoh_event_publish,
             zenoh_event_locality,
+            include_entry_values: std::env::var("ODGM_EVENT_INCLUDE_VALUES")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(false),
         }
     }
 
@@ -120,6 +128,7 @@ impl EventPipelineConfig {
             mst_sync_events: false,
             zenoh_event_publish: false,
             zenoh_event_locality: zenoh::sample::Locality::Remote,
+            include_entry_values: false,
         }
     }
 
@@ -132,6 +141,36 @@ impl EventPipelineConfig {
             zenoh_event_publish: true,
             zenoh_event_locality: zenoh::sample::Locality::SessionLocal,
             ..Self::from_env()
+        }
+    }
+
+    /// Override fields from collection-level options in `ShardMetadata.options`.
+    ///
+    /// Recognised keys:
+    /// - `zenoh_event_publish` → `self.zenoh_event_publish`
+    /// - `zenoh_event_locality` → `self.zenoh_event_locality`
+    /// - `ws_event_include_values` → `self.include_entry_values`
+    pub fn apply_metadata_overrides(
+        &mut self,
+        opts: &std::collections::HashMap<String, String>,
+    ) {
+        if let Some(v) = opts.get("zenoh_event_publish") {
+            if let Ok(b) = v.parse::<bool>() {
+                self.zenoh_event_publish = b;
+            }
+        }
+        if let Some(v) = opts.get("zenoh_event_locality") {
+            self.zenoh_event_locality = match v.as_str() {
+                "session_local" => zenoh::sample::Locality::SessionLocal,
+                "any" => zenoh::sample::Locality::Any,
+                "remote" => zenoh::sample::Locality::Remote,
+                _ => self.zenoh_event_locality,
+            };
+        }
+        if let Some(v) = opts.get("ws_event_include_values") {
+            if let Ok(b) = v.parse::<bool>() {
+                self.include_entry_values = b;
+            }
         }
     }
 }
@@ -284,15 +323,17 @@ impl ShardBuilder<AnyStorage, ()> {
 
         let mst_config = default_mst_config();
 
+        // Apply class-level overrides before building the dispatcher.
+        let mut epc = self.event_pipeline_config.clone();
+        epc.apply_metadata_overrides(&metadata.options);
+
         // If MST sync events are enabled, build the V2 dispatcher now so the
         // MST networking layer can emit MutationSource::Sync events.
-        let v2_for_mst = if self.event_pipeline_config.enabled
-            && self.event_pipeline_config.mst_sync_events
-        {
+        let v2_for_mst = if epc.enabled && epc.mst_sync_events {
             Some(build_event_dispatcher(
                 session,
                 &self.event_config,
-                &self.event_pipeline_config,
+                &epc,
             ))
         } else {
             None
@@ -402,6 +443,10 @@ where
 
         info!("Building networked shard: {:?}", &metadata);
 
+        // Apply class-level overrides before building the dispatcher.
+        let mut epc = self.event_pipeline_config;
+        epc.apply_metadata_overrides(&metadata.options);
+
         let event_manager = self.event_config.as_ref().map(|config| {
             let trigger_processor = Arc::new(TriggerProcessor::new(
                 session.clone(),
@@ -416,7 +461,7 @@ where
         let v2_dispatcher = build_event_dispatcher(
             &session,
             &self.event_config,
-            &self.event_pipeline_config,
+            &epc,
         );
 
         ObjectUnifiedShard::new_full(

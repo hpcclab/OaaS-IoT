@@ -4,32 +4,6 @@ use wiremock::{
     matchers::{method, path, query_param},
 };
 
-// Helper to set an env var for the duration of a test and restore the previous value.
-struct EnvGuard {
-    key: &'static str,
-    old: Option<String>,
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        unsafe {
-            if let Some(ref v) = self.old {
-                std::env::set_var(self.key, v);
-            } else {
-                std::env::remove_var(self.key);
-            }
-        }
-    }
-}
-
-fn set_env_temp(key: &'static str, value: String) -> EnvGuard {
-    let old = std::env::var(key).ok();
-    unsafe {
-        std::env::set_var(key, value);
-    }
-    EnvGuard { key, old }
-}
-
 // fn prom_query_response(value: f64) -> ResponseTemplate {
 //     // Instant query style (vector)
 //     let body = serde_json::json!({
@@ -102,8 +76,7 @@ async fn analyzer_observe_only_yields_replicas_cpu_memory() {
         .mount(&server)
         .await;
 
-    let _guard = set_env_temp("OPRC_CRM_PROM_URL", server.uri());
-    let analyzer = Analyzer::new();
+    let analyzer = Analyzer::with_config(Some(server.uri()), true);
     let recs = analyzer
         .observe_only("ns", "demo", Some(200.0), Some(500.0))
         .await
@@ -130,8 +103,7 @@ async fn analyzer_handles_empty_results_gracefully() {
         .mount(&server)
         .await;
 
-    let _guard = set_env_temp("OPRC_CRM_PROM_URL", server.uri());
-    let analyzer = Analyzer::new();
+    let analyzer = Analyzer::with_config(Some(server.uri()), false);
     let recs = analyzer
         .observe_only("ns", "demo", None, Some(500.0))
         .await
@@ -152,8 +124,7 @@ async fn analyzer_handles_server_errors_gracefully() {
         .mount(&server)
         .await;
 
-    let _guard = set_env_temp("OPRC_CRM_PROM_URL", server.uri());
-    let analyzer = Analyzer::new();
+    let analyzer = Analyzer::with_config(Some(server.uri()), false);
     let recs = analyzer
         .observe_only("ns", "demo", None, None)
         .await

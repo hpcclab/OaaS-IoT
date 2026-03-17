@@ -31,6 +31,10 @@ pub enum MutationSource {
 pub struct ChangedKey {
     pub key_canonical: String,
     pub action: MutAction,
+    /// Raw entry value bytes (i.e. `ObjectVal.data`).
+    /// Populated only when the collection option `ws_event_include_values` is
+    /// `"true"` and the mutation is a create/update (never for deletes).
+    pub value: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone)]

@@ -1,6 +1,10 @@
 name: pixel-canvas
 classes:
   - key: pixel-canvas
+    options:
+      zenoh_event_publish: "true"
+      zenoh_event_locality: "session_local"
+      ws_event_include_values: "true"
     function_bindings:
       - name: paint
         function_key: pixel-canvas-wasm

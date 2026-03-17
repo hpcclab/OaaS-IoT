@@ -133,6 +133,18 @@ where
         key: &str,
         value: ObjectVal,
     ) -> Result<(), ShardError> {
+        // Capture raw data bytes before encoding if value inclusion is enabled
+        let include_values = self
+            .metadata
+            .options
+            .get("ws_event_include_values")
+            .is_some_and(|v| v == "true");
+        let raw_data = if include_values {
+            Some(value.data.clone())
+        } else {
+            None
+        };
+
         // Encode raw ObjectVal (granular storage stores individual entry values only)
         let value_bytes = postcard::to_allocvec(&value)
             .map_err(|e| ShardError::SerializationError(e.to_string()))?;
@@ -197,6 +209,7 @@ where
                 vec![ChangedKey {
                     key_canonical: key.to_string(),
                     action,
+                    value: raw_data,
                 }],
             )
             .with_event_config(event_cfg);
@@ -260,6 +273,7 @@ where
                 vec![ChangedKey {
                     key_canonical: key.to_string(),
                     action: MutAction::Delete,
+                    value: None,
                 }],
             );
             if let Some(v2) = &self.v2_dispatcher {
@@ -515,6 +529,11 @@ where
         let changed_keys: Vec<String> = values.keys().cloned().collect();
         // Prefer capability-based gating over env: if a V2 dispatcher exists, use it.
         let v2_mode = self.v2_dispatcher.is_some();
+        let include_values = self
+            .metadata
+            .options
+            .get("ws_event_include_values")
+            .is_some_and(|v| v == "true");
         let mut pre_exist: HashMap<String, bool> = HashMap::new();
         if v2_mode {
             for k in &changed_keys {
@@ -525,6 +544,14 @@ where
                     .await
                     .map_err(ShardError::from)?;
                 pre_exist.insert(k.clone(), exists);
+            }
+        }
+
+        // Capture raw data bytes per key for event values (before consuming `values`)
+        let mut raw_data_map: HashMap<String, Vec<u8>> = HashMap::new();
+        if v2_mode && include_values {
+            for (k, v) in &values {
+                raw_data_map.insert(k.clone(), v.data.clone());
             }
         }
 
@@ -572,6 +599,7 @@ where
                     } else {
                         MutAction::Create
                     },
+                    value: raw_data_map.remove(k),
                 });
             }
             let event_cfg = {
@@ -653,6 +681,7 @@ where
                     .map(|k| ChangedKey {
                         key_canonical: k.clone(),
                         action: MutAction::Delete,
+                        value: None,
                     })
                     .collect();
                 if !changed.is_empty() {

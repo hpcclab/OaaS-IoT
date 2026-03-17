@@ -51,6 +51,7 @@ fn make_test_package() -> OPackage {
                 parameters: vec![],
             }],
             state_spec: None,
+            options: Default::default(),
         }],
         functions: vec![OFunction {
             key: "echo".into(),

@@ -39,7 +39,30 @@ export interface WsEvent {
   cls_id: string;
   partition_id: number;
   source: string;
-  changes: Array<{ key: string; action: string }>;
+  changes: WsChange[];
+}
+
+export interface WsChange {
+  key: string;
+  action: string;
+  /** Base64-encoded entry value (present when ws_event_include_values is enabled). */
+  value?: string;
+}
+
+/**
+ * Decode a WsChange value (base64 → JSON-parsed string) into a pixel color.
+ * Returns null if no value is present or the payload is not a plain string.
+ */
+export function decodeChangeValue(change: WsChange): string | null {
+  if (!change.value) return null;
+  try {
+    const bytes = atob(change.value);
+    const parsed = JSON.parse(bytes);
+    if (typeof parsed === "string") return parsed;
+  } catch {
+    // ignore
+  }
+  return null;
 }
 
 /**

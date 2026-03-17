@@ -74,7 +74,7 @@ fn class_to_request(
         replica_count: 1,
         shard_assignments: vec![],
         shard_type: "none".to_string(),
-        options: HashMap::new(),
+        options: cls.options.clone(),
         invocations,
     }
 }

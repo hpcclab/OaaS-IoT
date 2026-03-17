@@ -14,6 +14,22 @@ use crate::events::TriggerProcessor;
 use crate::events::types::{EventContext, EventType, TriggerExecutionContext}; // internal types
 use oprc_grpc::ObjectEvent;
 
+/// Serde helper: serialize `Option<Vec<u8>>` as base64 string, skip if None.
+mod base64_opt {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    use serde::Serializer;
+
+    pub fn serialize<S>(data: &Option<Vec<u8>>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match data {
+            Some(bytes) => serializer.serialize_str(&STANDARD.encode(bytes)),
+            None => serializer.serialize_none(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct V2QueuedEvent {
     pub seq: u64,
@@ -360,6 +376,11 @@ pub struct ZenohEventPayload {
 pub struct ZenohChangedEntry {
     pub key: String,
     pub action: String,
+    /// Raw entry value bytes, base64-encoded via serde.
+    /// Present only for create/update when the collection option
+    /// `ws_event_include_values` is `"true"`.
+    #[serde(with = "base64_opt", skip_serializing_if = "Option::is_none")]
+    pub value: Option<Vec<u8>>,
 }
 
 impl ZenohEventPayload {
@@ -384,6 +405,7 @@ impl ZenohEventPayload {
                         MutAction::Update => "update".to_string(),
                         MutAction::Delete => "delete".to_string(),
                     },
+                    value: ck.value.clone(),
                 })
                 .collect(),
         }
