@@ -84,6 +84,7 @@ impl WasmInvocationExecutor {
         payload: Option<Vec<u8>>,
         data_ops: Box<dyn crate::host::OdgmDataOps>,
         oop_ctx: Option<&OopContext>,
+        fuel: u64,
     ) -> Result<WasmInvocationResult> {
         let module = self.module_store.get(fn_id).await.ok_or_else(|| {
             anyhow::anyhow!("WASM module not loaded for fn_id={}", fn_id)
@@ -98,6 +99,7 @@ impl WasmInvocationExecutor {
                     payload,
                     data_ops,
                     &module.component,
+                    fuel,
                 )
                 .await
             }
@@ -112,6 +114,7 @@ impl WasmInvocationExecutor {
                     data_ops,
                     oop_ctx,
                     &module.component,
+                    fuel,
                 )
                 .await
             }
@@ -127,6 +130,7 @@ impl WasmInvocationExecutor {
         payload: Option<Vec<u8>>,
         data_ops: Box<dyn crate::host::OdgmDataOps>,
         component: &wasmtime::component::Component,
+        fuel: u64,
     ) -> Result<WasmInvocationResult> {
         let ctx = wasmtime_wasi::WasiCtxBuilder::new()
             .inherit_stdout()
@@ -141,7 +145,7 @@ impl WasmInvocationExecutor {
         );
 
         let mut store = Store::new(self.module_store.engine(), host_state);
-        store.set_fuel(1_000_000_000)?;
+        store.set_fuel(fuel)?;
 
         let instance = OaasFunction::instantiate_async(
             &mut store,
@@ -182,6 +186,7 @@ impl WasmInvocationExecutor {
         payload: Option<Vec<u8>>,
         data_ops: Box<dyn crate::host::OdgmDataOps>,
         oop_ctx: Option<&OopContext>,
+        fuel: u64,
     ) -> Result<WasmInvocationResult> {
         let module = self.module_store.get(fn_id).await.ok_or_else(|| {
             anyhow::anyhow!("WASM module not loaded for fn_id={}", fn_id)
@@ -197,6 +202,7 @@ impl WasmInvocationExecutor {
                     payload,
                     data_ops,
                     &module.component,
+                    fuel,
                 )
                 .await
             }
@@ -210,6 +216,7 @@ impl WasmInvocationExecutor {
                     data_ops,
                     oop_ctx,
                     &module.component,
+                    fuel,
                 )
                 .await
             }
@@ -226,6 +233,7 @@ impl WasmInvocationExecutor {
         payload: Option<Vec<u8>>,
         data_ops: Box<dyn crate::host::OdgmDataOps>,
         component: &wasmtime::component::Component,
+        fuel: u64,
     ) -> Result<WasmInvocationResult> {
         let ctx = wasmtime_wasi::WasiCtxBuilder::new()
             .inherit_stdout()
@@ -240,7 +248,7 @@ impl WasmInvocationExecutor {
         );
 
         let mut store = Store::new(self.module_store.engine(), host_state);
-        store.set_fuel(1_000_000_000)?;
+        store.set_fuel(fuel)?;
 
         let instance = OaasFunction::instantiate_async(
             &mut store,
@@ -281,6 +289,7 @@ impl WasmInvocationExecutor {
         data_ops: Box<dyn crate::host::OdgmDataOps>,
         oop_ctx: Option<&OopContext>,
         component: &wasmtime::component::Component,
+        fuel: u64,
     ) -> Result<WasmInvocationResult> {
         let ctx = wasmtime_wasi::WasiCtxBuilder::new()
             .inherit_stdout()
@@ -316,7 +325,7 @@ impl WasmInvocationExecutor {
         })?;
 
         let mut store = Store::new(self.module_store.engine(), host_state);
-        store.set_fuel(1_000_000_000)?;
+        store.set_fuel(fuel)?;
 
         let instance = OaasObject::instantiate_async(
             &mut store,
@@ -407,7 +416,7 @@ mod tests {
         let mock = Box::new(MockDataOps::default());
 
         let result = executor
-            .invoke_fn("nonexistent", "cls", 0, None, mock, None)
+            .invoke_fn("nonexistent", "cls", 0, None, mock, None, 1_000_000_000)
             .await;
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
@@ -421,7 +430,7 @@ mod tests {
         let mock = Box::new(MockDataOps::default());
 
         let result = executor
-            .invoke_obj("nonexistent", "cls", 0, "obj", None, mock, None)
+            .invoke_obj("nonexistent", "cls", 0, "obj", None, mock, None, 1_000_000_000)
             .await;
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();

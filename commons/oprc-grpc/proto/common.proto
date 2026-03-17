@@ -42,6 +42,8 @@ message ProvisionConfig {
   // Autoscaling bounds
   optional uint32 min_scale = 9;
   optional uint32 max_scale = 10;
+  // Maximum WASM fuel per invocation (0 = use runtime default)
+  optional uint64 wasm_fuel = 12;
 }
 
 message NfrRequirements {

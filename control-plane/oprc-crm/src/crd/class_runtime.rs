@@ -265,6 +265,9 @@ pub struct FunctionRoute {
     /// For WASM functions: URL to fetch the .wasm module from
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wasm_module_url: Option<String>,
+    /// Maximum WASM fuel per invocation. None uses the runtime default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wasm_fuel: Option<u64>,
     /// Whether the function is stateless (default true)
     #[serde(default)]
     pub stateless: Option<bool>,

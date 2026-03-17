@@ -87,7 +87,7 @@ impl EventPipelineConfig {
         let queue_bound = std::env::var("ODGM_EVENT_QUEUE_BOUND")
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(1024);
+            .unwrap_or(8192);
         let broadcast_bound = std::env::var("ODGM_EVENT_BCAST_BOUND")
             .ok()
             .and_then(|v| v.parse().ok())

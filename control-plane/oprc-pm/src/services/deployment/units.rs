@@ -93,6 +93,7 @@ pub fn create_deployment_units_for_env(
                 memory_limit: pc_model.memory_limit.clone(),
                 min_scale: pc_model.min_scale,
                 max_scale: pc_model.max_scale,
+                wasm_fuel: pc_model.wasm_fuel,
             });
             let nfr = &deployment.nfr_requirements;
             let nfr_requirements = Some(grpc_types::NfrRequirements {

@@ -42,6 +42,7 @@ fn wasm_metadata() -> ShardMetadata {
             standby: false,
             active_group: vec![],
             wasm_module_url: Some(module_url.clone()),
+            wasm_fuel: None,
         },
     );
     fn_routes.insert(
@@ -52,6 +53,7 @@ fn wasm_metadata() -> ShardMetadata {
             standby: false,
             active_group: vec![],
             wasm_module_url: Some(module_url),
+            wasm_fuel: None,
         },
     );
     ShardMetadata {

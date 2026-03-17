@@ -78,6 +78,7 @@ async fn test_invoke_fn_echo() {
             payload.clone(),
             data_ops,
             Some(&ctx),
+            1_000_000_000,
         )
         .await
         .unwrap();
@@ -102,7 +103,7 @@ async fn test_invoke_fn_echo_empty_payload() {
     let ctx = oop_ctx("test-class", 0);
 
     let response = executor
-        .invoke_fn("echo", "test-class", 0, None, data_ops, Some(&ctx))
+        .invoke_fn("echo", "test-class", 0, None, data_ops, Some(&ctx), 1_000_000_000)
         .await
         .unwrap();
 
@@ -133,7 +134,7 @@ async fn test_invoke_obj_transform_raw_key() {
     let ctx = oop_ctx(cls_id, 0);
 
     let response = executor
-        .invoke_obj("transform", cls_id, 0, obj_id, None, data_ops, Some(&ctx))
+        .invoke_obj("transform", cls_id, 0, obj_id, None, data_ops, Some(&ctx), 1_000_000_000)
         .await
         .unwrap();
 
@@ -172,7 +173,7 @@ async fn test_invoke_obj_transform_data_key() {
     let ctx = oop_ctx(cls_id, 0);
 
     let response = executor
-        .invoke_obj("transform", cls_id, 0, obj_id, None, data_ops, Some(&ctx))
+        .invoke_obj("transform", cls_id, 0, obj_id, None, data_ops, Some(&ctx), 1_000_000_000)
         .await
         .unwrap();
 
@@ -211,6 +212,7 @@ async fn test_invoke_obj_transform_missing_object() {
             None,
             data_ops,
             Some(&ctx),
+            1_000_000_000,
         )
         .await
         .unwrap();
@@ -245,6 +247,7 @@ async fn test_invoke_obj_get_ref() {
             None,
             data_ops,
             Some(&ctx),
+            1_000_000_000,
         )
         .await
         .unwrap();
@@ -289,6 +292,7 @@ async fn test_invoke_fn_cross_access() {
             Some(ref_str.clone().into_bytes()),
             data_ops,
             Some(&ctx),
+            1_000_000_000,
         )
         .await
         .unwrap();
@@ -316,7 +320,7 @@ async fn test_invoke_fn_cross_access_missing_payload() {
 
     // No payload → guest should return InvalidRequest
     let response = executor
-        .invoke_fn("cross_access", "my-class", 0, None, data_ops, Some(&ctx))
+        .invoke_fn("cross_access", "my-class", 0, None, data_ops, Some(&ctx), 1_000_000_000)
         .await
         .unwrap();
 
@@ -345,6 +349,7 @@ async fn test_invoke_fn_unknown_function_name() {
             Some(b"test".to_vec()),
             data_ops,
             Some(&ctx),
+            1_000_000_000,
         )
         .await
         .unwrap();
@@ -363,7 +368,7 @@ async fn test_invoke_fn_module_not_found() {
     let data_ops = Box::new(MockDataOps::default());
 
     let result = executor
-        .invoke_fn("nonexistent", "cls", 0, None, data_ops, None)
+        .invoke_fn("nonexistent", "cls", 0, None, data_ops, None, 1_000_000_000)
         .await;
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
@@ -377,7 +382,7 @@ async fn test_invoke_obj_module_not_found() {
     let data_ops = Box::new(MockDataOps::default());
 
     let result = executor
-        .invoke_obj("nonexistent", "cls", 0, "obj", None, data_ops, None)
+        .invoke_obj("nonexistent", "cls", 0, "obj", None, data_ops, None, 1_000_000_000)
         .await;
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();

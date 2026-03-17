@@ -320,6 +320,14 @@ pub async fn setup_wasm_offloader(
 
     let factory = Arc::new(ShardDataOpsFactory::new(shard));
 
+    // Build per-function fuel map from routes
+    let fn_fuel: std::collections::HashMap<String, u64> = wasm_routes
+        .iter()
+        .filter_map(|(fn_id, route)| {
+            route.wasm_fuel.map(|f| (fn_id.to_string(), f))
+        })
+        .collect();
+
     // Create OOP context for oaas-object world support.
     // Uses shard identity for locality checks; remote proxy is None for now
     // (can be injected when cross-shard Zenoh proxy is available).
@@ -329,7 +337,8 @@ pub async fn setup_wasm_offloader(
         shard_partition_id: metadata.partition_id as u32,
     };
     let adapter =
-        WasmExecutorAdapter::with_oop_context(executor, factory, oop_context);
+        WasmExecutorAdapter::with_oop_context(executor, factory, oop_context)
+            .with_fn_fuel(fn_fuel);
 
     Some(Arc::new(adapter))
 }

@@ -764,6 +764,7 @@ impl TemplateManager {
                 routes.entry(default_method).or_insert(FunctionRoute {
                     url: format!("wasm://{}", f.function_key),
                     wasm_module_url: Some(module_url.clone()),
+                    wasm_fuel: None,
                     stateless: Some(true),
                     standby: None,
                     active_group: Vec::new(),
@@ -780,6 +781,7 @@ impl TemplateManager {
                 routes.entry(default_method).or_insert(FunctionRoute {
                     url,
                     wasm_module_url: None,
+                    wasm_fuel: None,
                     stateless: Some(true),
                     standby: None,
                     active_group: Vec::new(),
@@ -1153,6 +1155,7 @@ mod tests {
             FunctionRoute {
                 url: "http://custom-a:9000/".into(),
                 wasm_module_url: None,
+                wasm_fuel: None,
                 stateless: Some(false), // user overrides default
                 standby: Some(true),
                 active_group: vec![1, 2],

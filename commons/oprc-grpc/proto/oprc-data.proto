@@ -348,6 +348,8 @@ message FuncInvokeRoute {
   repeated uint64 active_group = 4;
   // For WASM functions: URL to fetch the .wasm module from
   optional string wasm_module_url = 5;
+  // Maximum WASM fuel per invocation (0 = use runtime default)
+  optional uint64 wasm_fuel = 6;
 }
 
 

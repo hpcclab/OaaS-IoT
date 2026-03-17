@@ -20,6 +20,7 @@ pub fn build_collection_request(
                 standby: *standby,
                 active_group: vec![],
                 wasm_module_url: None,
+                wasm_fuel: None,
             },
         );
     }

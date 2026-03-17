@@ -28,7 +28,6 @@ pub struct NfrRequirements {
     pub cpu_utilization_target: Option<f64>,
 }
 
-
 #[derive(
     Debug, Clone, Serialize, Deserialize, PartialEq, Validate, JsonSchema,
 )]
@@ -71,8 +70,10 @@ pub struct ProvisionConfig {
     pub memory_limit: Option<String>,
     pub min_scale: Option<u32>, // Minimum scale for autoscaling
     pub max_scale: Option<u32>, // Maximum scale for autoscaling
+    /// Maximum WASM fuel consumed per invocation. None uses the runtime default (1_000_000_000).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wasm_fuel: Option<u64>,
 }
-
 
 #[cfg(test)]
 mod tests {

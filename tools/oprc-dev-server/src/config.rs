@@ -47,11 +47,19 @@ fn class_to_request(
             .and_then(|pc| pc.wasm_module_url.as_deref())
             .map(|url| resolve_wasm_url(url));
 
+        let wasm_fuel = pkg
+            .functions
+            .iter()
+            .find(|f| f.key == binding.function_key)
+            .and_then(|f| f.provision_config.as_ref())
+            .and_then(|pc| pc.wasm_fuel);
+
         fn_routes.insert(
             binding.name.clone(),
             oprc_grpc::FuncInvokeRoute {
                 url: format!("wasm://{}", binding.name),
                 wasm_module_url: wasm_url,
+                wasm_fuel,
                 stateless: binding.stateless,
                 standby: false,
                 active_group: vec![],

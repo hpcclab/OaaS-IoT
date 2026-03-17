@@ -111,41 +111,35 @@ class PixelCanvas extends OaaSObject {
     const totalW = cols * SIZE;
     const totalH = rows * SIZE;
 
-    // 1. Read all canvas objects into a global color grid
-    //    grid[gy][gx] = color string or null
-    const grid: (string | null)[][] = Array.from({ length: totalH }, () =>
-      Array<string | null>(totalW).fill(null),
-    );
-
-    interface CanvasRef {
-      cx: number;
-      cy: number;
-      proxy: ReturnType<OaaSObject["object"]>;
-    }
-    const canvases: CanvasRef[] = [];
-
+    // 1. Create all proxies upfront, then fetch all canvases in parallel.
+    type CanvasProxy = ReturnType<OaaSObject["sibling"]>;
+    const proxies: CanvasProxy[] = Array(cols * rows);
     for (let cy = 0; cy < rows; cy++) {
       for (let cx = 0; cx < cols; cx++) {
-        const proxy = this.sibling(`canvas-${cx}-${cy}`);
-        canvases.push({ cx, cy, proxy });
-        const all = await proxy.getAll();
-        for (const [key, value] of Object.entries(all)) {
-          if (key.startsWith("_") || typeof value !== "string") continue;
-          const sep = key.indexOf(":");
-          if (sep < 0) continue;
-          const lx = parseInt(key.substring(0, sep), 10);
-          const ly = parseInt(key.substring(sep + 1), 10);
-          if (isNaN(lx) || isNaN(ly)) continue;
-          grid[cy * SIZE + ly][cx * SIZE + lx] = value;
-        }
+        proxies[cy * cols + cx] = this.sibling(`canvas-${cx}-${cy}`);
       }
     }
 
-    // 2. Compute next generation
-    const nextGrid: (string | null)[][] = Array.from(
-      { length: totalH },
-      () => Array<string | null>(totalW).fill(null),
-    );
+    const allEntries = await Promise.all(proxies.map((p) => p.getAll()));
+
+    // Build global grid from fetched data. #FFFFFF = dead/empty.
+    const grid: string[] = new Array(totalW * totalH).fill("#FFFFFF");
+    for (let i = 0; i < proxies.length; i++) {
+      const cx = i % cols;
+      const cy = (i / cols) | 0;
+      for (const [key, value] of Object.entries(allEntries[i])) {
+        if (key.startsWith("_") || typeof value !== "string") continue;
+        const sep = key.indexOf(":");
+        if (sep < 0) continue;
+        const lx = parseInt(key.substring(0, sep), 10);
+        const ly = parseInt(key.substring(sep + 1), 10);
+        if (isNaN(lx) || isNaN(ly)) continue;
+        grid[(cy * SIZE + ly) * totalW + (cx * SIZE + lx)] = value;
+      }
+    }
+
+    // 2. Compute next generation (flat array avoids inner array allocations).
+    const nextGrid: string[] = new Array(totalW * totalH).fill("#FFFFFF");
 
     let births = 0;
     let deaths = 0;
@@ -159,18 +153,19 @@ class PixelCanvas extends OaaSObject {
             const nx = gx + dx;
             const ny = gy + dy;
             if (nx < 0 || nx >= totalW || ny < 0 || ny >= totalH) continue;
-            const c = grid[ny][nx];
-            if (c !== null) neighbors.push(c);
+            const c = grid[ny * totalW + nx];
+            if (c !== "#FFFFFF") neighbors.push(c);
           }
         }
 
-        const alive = grid[gy][gx] !== null;
+        const idx = gy * totalW + gx;
+        const alive = grid[idx] !== "#FFFFFF";
         const count = neighbors.length;
 
         if (alive && (count === 2 || count === 3)) {
-          nextGrid[gy][gx] = grid[gy][gx]; // survives, keep color
+          nextGrid[idx] = grid[idx]; // survives, keep color
         } else if (!alive && count === 3) {
-          nextGrid[gy][gx] = averageColors(neighbors); // born
+          nextGrid[idx] = averageColors(neighbors); // born
           births++;
         } else if (alive) {
           deaths++; // dies
@@ -178,36 +173,22 @@ class PixelCanvas extends OaaSObject {
       }
     }
 
-    // 3. Write back only changed pixels to each canvas
-    for (const { cx, cy, proxy } of canvases) {
-      const updates: Record<string, string> = {};
-      const deletes: string[] = [];
-
-      for (let ly = 0; ly < SIZE; ly++) {
-        for (let lx = 0; lx < SIZE; lx++) {
-          const gy = cy * SIZE + ly;
-          const gx = cx * SIZE + lx;
-          const key = `${lx}:${ly}`;
-          const was = grid[gy][gx];
-          const now = nextGrid[gy][gx];
-
-          if (was !== now) {
-            if (now !== null) {
-              updates[key] = now;
-            } else {
-              deletes.push(key);
-            }
+    // 3. Write back only changed pixels — all tiles in parallel.
+    await Promise.all(
+      proxies.map(async (proxy, i) => {
+        const cx = i % cols;
+        const cy = (i / cols) | 0;
+        const updates: Record<string, string> = {};
+        for (let ly = 0; ly < SIZE; ly++) {
+          for (let lx = 0; lx < SIZE; lx++) {
+            const idx = (cy * SIZE + ly) * totalW + (cx * SIZE + lx);
+            const key = `${lx}:${ly}`;
+            if (grid[idx] !== nextGrid[idx]) updates[key] = nextGrid[idx];
           }
         }
-      }
-
-      if (Object.keys(updates).length > 0) {
-        await proxy.setMany(updates);
-      }
-      for (const key of deletes) {
-        await proxy.delete(key);
-      }
-    }
+        if (Object.keys(updates).length > 0) await proxy.setMany(updates);
+      }),
+    );
 
     return { births, deaths };
   }

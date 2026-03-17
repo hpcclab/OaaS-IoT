@@ -4,6 +4,7 @@
 //! `ObjectInvocationRequest`, `InvocationResponse`). The WASM executor uses
 //! WIT-generated types. This adapter converts between the two.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::executor::{OopContext, WasmInvocationExecutor, WasmResponseStatus};
@@ -11,7 +12,7 @@ use crate::host::OdgmDataOps;
 use oprc_grpc::{InvocationResponse, ResponseStatus};
 use oprc_invoke::OffloadError;
 use oprc_invoke::handler::InvocationExecutor;
-use tracing::debug;
+use tracing::{debug, error};
 
 /// Factory that creates `OdgmDataOps` instances for each invocation.
 ///
@@ -22,6 +23,9 @@ pub trait DataOpsFactory: Send + Sync {
     fn create(&self) -> Box<dyn OdgmDataOps>;
 }
 
+/// Default fuel per WASM invocation when no per-function override is configured.
+pub const DEFAULT_WASM_FUEL: u64 = 1_000_000_000;
+
 /// Adapter that wraps [`WasmInvocationExecutor`] and implements the proto-based
 /// [`InvocationExecutor`] trait so it can be used as a `local_offloader` on a shard.
 pub struct WasmExecutorAdapter {
@@ -29,6 +33,8 @@ pub struct WasmExecutorAdapter {
     data_ops_factory: Arc<dyn DataOpsFactory>,
     /// Optional OOP context (shard identity + remote proxy) for oaas-object world.
     oop_context: Option<OopContext>,
+    /// Per-function fuel limits. Key is fn_id; falls back to DEFAULT_WASM_FUEL.
+    fn_fuel: HashMap<String, u64>,
 }
 
 impl WasmExecutorAdapter {
@@ -40,6 +46,7 @@ impl WasmExecutorAdapter {
             executor,
             data_ops_factory,
             oop_context: None,
+            fn_fuel: HashMap::new(),
         }
     }
 
@@ -53,7 +60,21 @@ impl WasmExecutorAdapter {
             executor,
             data_ops_factory,
             oop_context: Some(oop_context),
+            fn_fuel: HashMap::new(),
         }
+    }
+
+    /// Set per-function fuel limits (fn_id → fuel).
+    pub fn with_fn_fuel(mut self, fn_fuel: HashMap<String, u64>) -> Self {
+        self.fn_fuel = fn_fuel;
+        self
+    }
+
+    fn fuel_for(&self, fn_id: &str) -> u64 {
+        self.fn_fuel
+            .get(fn_id)
+            .copied()
+            .unwrap_or(DEFAULT_WASM_FUEL)
     }
 }
 
@@ -84,9 +105,17 @@ impl InvocationExecutor for WasmExecutorAdapter {
                 },
                 data_ops,
                 self.oop_context.as_ref(),
+                self.fuel_for(&req.fn_id),
             )
             .await
             .map_err(|e| {
+                error!(
+                    fn_id = %req.fn_id,
+                    cls_id = %req.cls_id,
+                    partition_id = req.partition_id,
+                    "WASM invoke_fn failed: {:#}",
+                    e
+                );
                 OffloadError::InternalError(format!(
                     "WASM invoke_fn failed: {}",
                     e
@@ -124,9 +153,18 @@ impl InvocationExecutor for WasmExecutorAdapter {
                 },
                 data_ops,
                 self.oop_context.as_ref(),
+                self.fuel_for(&req.fn_id),
             )
             .await
             .map_err(|e| {
+                error!(
+                    fn_id = %req.fn_id,
+                    cls_id = %req.cls_id,
+                    partition_id = req.partition_id,
+                    object_id = %object_id,
+                    "WASM invoke_obj failed: {:#}",
+                    e
+                );
                 OffloadError::InternalError(format!(
                     "WASM invoke_obj failed: {}",
                     e

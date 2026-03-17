@@ -39,6 +39,8 @@ export interface WsEvent {
   cls_id: string;
   partition_id: number;
   source: string;
+  /** Object version after this mutation — used for gap detection. */
+  version?: number;
   changes: WsChange[];
 }
 

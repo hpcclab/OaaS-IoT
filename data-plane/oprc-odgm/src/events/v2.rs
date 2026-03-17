@@ -66,17 +66,6 @@ pub struct V2Dispatcher {
 }
 
 impl V2Dispatcher {
-    pub fn new(queue_bound: usize, bcast_bound: usize) -> Arc<Self> {
-        Self::new_with_processor(queue_bound, bcast_bound, None)
-    }
-
-    pub fn new_with_processor(
-        queue_bound: usize,
-        bcast_bound: usize,
-        trigger_processor: Option<Arc<TriggerProcessor>>,
-    ) -> Arc<Self> {
-        Self::new_with_zenoh(queue_bound, bcast_bound, trigger_processor, None)
-    }
 
     /// Create a V2 dispatcher with optional Zenoh session for event publication.
     /// When `zenoh_session` is `Some`, each processed event is published to
@@ -372,6 +361,7 @@ pub struct ZenohEventPayload {
     pub cls_id: String,
     pub partition_id: u16,
     pub source: String,
+    pub version: u64,
     pub changes: Vec<ZenohChangedEntry>,
 }
 
@@ -397,6 +387,7 @@ impl ZenohEventPayload {
             cls_id: evt.ctx.cls_id.clone(),
             partition_id: evt.ctx.partition_id,
             source: source.to_string(),
+            version: evt.ctx.version_after,
             changes: evt
                 .ctx
                 .changed

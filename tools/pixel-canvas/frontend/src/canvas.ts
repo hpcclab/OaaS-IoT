@@ -223,7 +223,7 @@ export class AudienceCanvas {
     let allHaveValues = true;
     for (const change of evt.changes) {
       if (change.key.startsWith("_")) continue;
-      if (change.action === "Delete") {
+      if (change.action === "delete") {
         // Deletes never carry a value — apply directly
         if (!this.dirty.has(change.key)) {
           this.pixels.delete(change.key);

@@ -7,10 +7,9 @@
 
 import { CANVAS_SIZE } from "./types.js";
 import type { PixelMap } from "./types.js";
-import { fetchCanvas, invokeGolStep, subscribeToPartition, decodeChangeValue } from "./api.js";
+import { fetchCanvas, paintBatch, invokeGolStep, subscribeToPartition, decodeChangeValue } from "./api.js";
 import type { FetchResult, WsEvent } from "./api.js";
 import { renderPixels } from "./render.js";
-import { AudienceCanvas } from "./canvas.js";
 
 export class PresenterMosaic {
   private readonly gatewayBase: string;
@@ -22,11 +21,17 @@ export class PresenterMosaic {
   private readonly pixelMaps: PixelMap[][];
 
   private wsSub: { destroy: () => void } | null = null;
-  private activeEditor: AudienceCanvas | null = null;
   private canvases: { el: HTMLCanvasElement; x: number; y: number }[] = [];
 
   private statusEl!: HTMLSpanElement;
-  private editorEl!: HTMLDivElement;
+
+  /** Direct-draw state */
+  private currentColor = "#000000";
+  private readonly dirtyMaps = new Map<string, Set<string>>();
+  private readonly flushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /** Per-tile last received object version — key: "x:y". Used for WS gap detection. */
+  private readonly tileVersions = new Map<string, number>();
 
   /** GoL auto-run state */
   private golRunning = false;
@@ -67,6 +72,7 @@ export class PresenterMosaic {
         <div class="presenter-toolbar">
           <span class="js-mosaic-status status-indicator">● loading...</span>
           <span class="mosaic-info">${this.cols}×${this.rows} | ${this.gatewayBase}</span>
+          <label class="color-label">Color <input type="color" class="js-draw-color" value="#000000"></label>
         </div>
         <div class="gol-controls">
           <button class="btn-small js-gol-step" title="Run one Game of Life step">⏩ Step</button>
@@ -81,12 +87,13 @@ export class PresenterMosaic {
         <div class="js-mosaic-grid mosaic-grid"
           style="grid-template-columns:repeat(${this.cols}, ${tilePx}px)">
         </div>
-        <div class="js-tile-editor" style="display:none"></div>
       </div>`;
 
     this.statusEl = container.querySelector(".js-mosaic-status")!;
     const gridEl = container.querySelector(".js-mosaic-grid")!;
-    this.editorEl = container.querySelector(".js-tile-editor")! as HTMLDivElement;
+
+    const colorPicker = container.querySelector(".js-draw-color") as HTMLInputElement;
+    colorPicker.addEventListener("input", () => { this.currentColor = colorPicker.value; });
 
     // GoL controls wiring
     const stepBtn = container.querySelector(".js-gol-step") as HTMLButtonElement;
@@ -118,7 +125,8 @@ export class PresenterMosaic {
         el.height = tilePx;
         el.title = `canvas-${x}-${y}`;
         el.className = "mosaic-tile";
-        el.addEventListener("click", () => this.openEditor(x, y));
+        el.style.cursor = "crosshair";
+        this.attachDrawEvents(el, x, y);
         gridEl.appendChild(el);
         this.canvases.push({ el, x, y });
       }
@@ -166,72 +174,135 @@ export class PresenterMosaic {
       const y = parseInt(m[2], 10);
       if (x >= this.cols || y >= this.rows) return;
 
-      // Try to apply deltas directly from inline values
-      let allHaveValues = true;
-      const pixels = this.pixelMaps[x][y];
-      for (const change of evt.changes) {
-        if (change.key.startsWith("_")) continue;
-        if (change.action === "Delete") {
-          pixels.delete(change.key);
-          continue;
-        }
-        const color = decodeChangeValue(change);
-        if (color !== null) {
-          pixels.set(change.key, color);
-        } else {
-          allHaveValues = false;
-        }
-      }
+      const vk = `${x}:${y}`;
+      const last = this.tileVersions.get(vk);
 
-      if (allHaveValues) {
-        const el = this.canvasEl(x, y);
-        if (el) renderPixels(el, pixels, this.cellSize);
-        this.statusEl.textContent = `● live — ${new Date().toLocaleTimeString()}`;
-        this.statusEl.style.color = "#22c55e";
-      } else {
-        // Fall back to full fetch for this tile
+      // Gap detection: if the server-side version jumped by more than 1 we
+      // missed at least one event (server queue overflow under heavy load).
+      // Re-fetch this single tile to reconcile, then apply no further delta
+      // — the fetch result is already authoritative.
+      if (evt.version !== undefined && last !== undefined && evt.version > last + 1) {
+        if (evt.version !== undefined) this.tileVersions.set(vk, evt.version);
         fetchCanvas(this.gatewayBase, x, y).then((result) => {
           if (!result.ok) return;
           this.pixelMaps[x][y] = result.pixels;
           const el = this.canvasEl(x, y);
           if (el) renderPixels(el, result.pixels, this.cellSize);
-          this.statusEl.textContent = `● live — ${new Date().toLocaleTimeString()}`;
-          this.statusEl.style.color = "#22c55e";
         });
+        return;
       }
+
+      if (evt.version !== undefined) this.tileVersions.set(vk, evt.version);
+
+      const pixels = this.pixelMaps[x][y];
+      for (const change of evt.changes) {
+        if (change.key.startsWith("_")) continue;
+        if (change.action === "delete") {
+          pixels.set(change.key, "#FFFFFF");
+          continue;
+        }
+        const color = decodeChangeValue(change);
+        if (color !== null) pixels.set(change.key, color);
+      }
+
+      const el = this.canvasEl(x, y);
+      if (el) renderPixels(el, pixels, this.cellSize);
+      this.statusEl.textContent = `● live — ${new Date().toLocaleTimeString()}`;
+      this.statusEl.style.color = "#22c55e";
     });
   }
 
-  private openEditor(x: number, y: number): void {
-    if (this.activeEditor) {
-      this.activeEditor.destroy();
-      this.activeEditor = null;
-    }
-    this.editorEl.style.display = "block";
-    this.editorEl.innerHTML = `
-      <div class="tile-editor-panel">
-        <div class="tile-editor-header">
-          Editing canvas-${x}-${y}
-          <button class="btn-small js-close-editor">✕ close</button>
-        </div>
-        <div class="js-editor-mount"></div>
-      </div>`;
-    this.editorEl
-      .querySelector(".js-close-editor")!
-      .addEventListener("click", () => {
-        this.activeEditor?.destroy();
-        this.activeEditor = null;
-        this.editorEl.style.display = "none";
-      });
-    this.activeEditor = new AudienceCanvas(
-      this.editorEl.querySelector(".js-editor-mount")!,
-      this.gatewayBase,
-      x,
-      y
-    );
+  /** Attach direct pointer-drawing events to a tile canvas element. */
+  private attachDrawEvents(el: HTMLCanvasElement, x: number, y: number): void {
+    let isDrawing = false;
+    let lastPx: number | null = null;
+    let lastPy: number | null = null;
+
+    const paintAt = (e: PointerEvent): void => {
+      if (!isDrawing) return;
+      const rect = el.getBoundingClientRect();
+      const scaleX = el.width / rect.width;
+      const scaleY = el.height / rect.height;
+      const px = Math.floor((e.clientX - rect.left) * scaleX / this.cellSize);
+      const py = Math.floor((e.clientY - rect.top) * scaleY / this.cellSize);
+      if (px < 0 || px >= CANVAS_SIZE || py < 0 || py >= CANVAS_SIZE) return;
+      if (lastPx !== null && lastPy !== null) {
+        this.paintLineOnTile(x, y, lastPx, lastPy, px, py);
+      } else {
+        this.paintPixelOnTile(x, y, px, py);
+      }
+      lastPx = px;
+      lastPy = py;
+      const tileEl = this.canvasEl(x, y);
+      if (tileEl) renderPixels(tileEl, this.pixelMaps[x][y], this.cellSize);
+      this.scheduleTileFlush(x, y);
+    };
+
+    el.addEventListener("pointerdown", (e) => {
+      isDrawing = true;
+      lastPx = null;
+      lastPy = null;
+      el.setPointerCapture(e.pointerId);
+      paintAt(e);
+    });
+    el.addEventListener("pointermove", paintAt);
+    el.addEventListener("pointerup", () => { isDrawing = false; lastPx = null; lastPy = null; });
+    el.addEventListener("pointercancel", () => { isDrawing = false; lastPx = null; lastPy = null; });
   }
 
-  /** Run a single GoL step and refresh the mosaic. */
+  private paintPixelOnTile(x: number, y: number, px: number, py: number): void {
+    const key = `${px}:${py}`;
+    const pixels = this.pixelMaps[x][y];
+    if ((pixels.get(key) ?? "#FFFFFF") === this.currentColor) return;
+    pixels.set(key, this.currentColor);
+    this.dirtyForTile(x, y).add(key);
+  }
+
+  /** Bresenham's line algorithm across a single tile. */
+  private paintLineOnTile(x: number, y: number, x0: number, y0: number, x1: number, y1: number): void {
+    let dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+    let err = dx - dy;
+    while (true) {
+      this.paintPixelOnTile(x, y, x0, y0);
+      if (x0 === x1 && y0 === y1) break;
+      const e2 = 2 * err;
+      if (e2 > -dy) { err -= dy; x0 += sx; }
+      if (e2 < dx)  { err += dx; y0 += sy; }
+    }
+  }
+
+  private dirtyForTile(x: number, y: number): Set<string> {
+    const key = `${x}:${y}`;
+    let s = this.dirtyMaps.get(key);
+    if (!s) { s = new Set(); this.dirtyMaps.set(key, s); }
+    return s;
+  }
+
+  private scheduleTileFlush(x: number, y: number): void {
+    const key = `${x}:${y}`;
+    const existing = this.flushTimers.get(key);
+    if (existing !== undefined) clearTimeout(existing);
+    this.flushTimers.set(key, setTimeout(() => this.flushTile(x, y), 300));
+  }
+
+  private async flushTile(x: number, y: number): Promise<void> {
+    const dirty = this.dirtyForTile(x, y);
+    if (dirty.size === 0) return;
+    const saved = new Set(dirty);
+    dirty.clear();
+    const batch: PixelMap = new Map();
+    for (const k of saved) {
+      const color = this.pixelMaps[x][y].get(k);
+      if (color !== undefined) batch.set(k, color);
+    }
+    const ok = await paintBatch(this.gatewayBase, x, y, batch);
+    if (!ok) {
+      for (const k of saved) dirty.add(k);
+    }
+  }
+
+  /** Run a single GoL step. Canvas updates arrive via WS events; gap detection handles any drops. */
   private async runOneStep(infoEl: Element): Promise<void> {
     if (this.golBusy) return;
     this.golBusy = true;
@@ -243,7 +314,6 @@ export class PresenterMosaic {
     } else {
       infoEl.textContent = "step failed";
     }
-    await this.fetchAll();
     this.golBusy = false;
   }
 
@@ -272,6 +342,6 @@ export class PresenterMosaic {
   destroy(): void {
     this.wsSub?.destroy();
     this.stopAutoRun();
-    this.activeEditor?.destroy();
+    for (const timer of this.flushTimers.values()) clearTimeout(timer);
   }
 }
