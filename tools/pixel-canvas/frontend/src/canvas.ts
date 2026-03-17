@@ -23,6 +23,8 @@ export class AudienceCanvas {
   private currentColor = "#000000";
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private wsSub: { destroy: () => void } | null = null;
+  private lastPx: number | null = null;
+  private lastPy: number | null = null;
 
   private canvasEl!: HTMLCanvasElement;
   private colorPicker!: HTMLInputElement;
@@ -95,26 +97,58 @@ export class AudienceCanvas {
       const px = Math.floor(((e.clientX - rect.left) * scaleX) / this.cellSize);
       const py = Math.floor(((e.clientY - rect.top) * scaleY) / this.cellSize);
       if (px < 0 || px >= CANVAS_SIZE || py < 0 || py >= CANVAS_SIZE) return;
-      const key = `${px}:${py}`;
-      if (this.pixels.get(key) === this.currentColor) return;
-      this.pixels.set(key, this.currentColor);
-      this.dirty.add(key);
+      if (this.lastPx !== null && this.lastPy !== null) {
+        this.paintLine(this.lastPx, this.lastPy, px, py);
+      } else {
+        this.paintPixel(px, py);
+      }
+      this.lastPx = px;
+      this.lastPy = py;
       this.render();
       this.scheduleSave();
     };
 
     canvas.addEventListener("pointerdown", (e) => {
       this.isDrawing = true;
+      this.lastPx = null;
+      this.lastPy = null;
       canvas.setPointerCapture(e.pointerId);
       paint(e);
     });
     canvas.addEventListener("pointermove", paint);
     canvas.addEventListener("pointerup", () => {
       this.isDrawing = false;
+      this.lastPx = null;
+      this.lastPy = null;
     });
     canvas.addEventListener("pointercancel", () => {
       this.isDrawing = false;
+      this.lastPx = null;
+      this.lastPy = null;
     });
+  }
+
+  private paintPixel(px: number, py: number): void {
+    const key = `${px}:${py}`;
+    if (this.pixels.get(key) === this.currentColor) return;
+    this.pixels.set(key, this.currentColor);
+    this.dirty.add(key);
+  }
+
+  /** Bresenham's line algorithm — fills all pixels between (x0,y0) and (x1,y1). */
+  private paintLine(x0: number, y0: number, x1: number, y1: number): void {
+    let dx = Math.abs(x1 - x0);
+    let dy = Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1;
+    const sy = y0 < y1 ? 1 : -1;
+    let err = dx - dy;
+    while (true) {
+      this.paintPixel(x0, y0);
+      if (x0 === x1 && y0 === y1) break;
+      const e2 = 2 * err;
+      if (e2 > -dy) { err -= dy; x0 += sx; }
+      if (e2 < dx)  { err += dx; y0 += sy; }
+    }
   }
 
   private render(): void {
