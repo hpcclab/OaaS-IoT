@@ -642,7 +642,7 @@ async fn run_ts_scripting_e2e_test(
 
     // Read TypeScript source
     let ts_source =
-        std::fs::read_to_string("tests/wasm-guest-ts-counter/counter.ts")
+        std::fs::read_to_string("tests/wasm-guest-ts-counter/src/index.ts")
             .context("Failed to read TypeScript counter source")?;
 
     let client = reqwest::Client::new();

@@ -4,6 +4,9 @@
   "description": "OaaS Compiler Service — compiles TypeScript to WASM Components via ComponentizeJS",
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "oprc-compile": "dist/cli.js"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",

@@ -20,7 +20,7 @@ const WIT_PATH = path.resolve(WORKSPACE_ROOT, "data-plane/oprc-wasm/wit");
 const SDK_PATH = path.resolve(WORKSPACE_ROOT, "tools/oaas-sdk-ts/src");
 const GUEST_SOURCE = path.resolve(
   WORKSPACE_ROOT,
-  "tests/wasm-guest-ts-counter/counter.ts",
+  "tests/wasm-guest-ts-counter/src/index.ts",
 );
 const OUTPUT_DIR = path.resolve(WORKSPACE_ROOT, "target/wasm-ts-guest");
 const OUTPUT_PATH = path.join(OUTPUT_DIR, "counter.wasm");

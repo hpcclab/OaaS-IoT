@@ -25,10 +25,8 @@ pixel-canvas/
 └── wasm-guest/               # PixelCanvas WASM service
     ├── package.json
     ├── tsconfig.json
-    ├── scripts/
-    │   └── compile.js        # compile via oprc-compiler API
     └── src/
-        └── canvas.ts         # @service("PixelCanvas") class
+        └── index.ts          # @service("PixelCanvas") class
 ```
 
 ## Quick Start
@@ -60,17 +58,10 @@ Open `http://localhost:5173` in your browser. Use URL parameters to skip the con
 
 ### WASM guest compilation
 
-Requires `oprc-compiler` running locally:
-
 ```bash
-# Start the compiler service (in another terminal)
-cd tools/oprc-compiler
-npm install && npm run dev
-
-# Compile the PixelCanvas WASM guest
 cd tools/pixel-canvas
 npm run compile
-# Output: wasm-guest/dist/pixel-canvas.wasm
+# Output: wasm-guest/dist/pixel-canvas-wasm.wasm
 ```
 
 ### Type checking
