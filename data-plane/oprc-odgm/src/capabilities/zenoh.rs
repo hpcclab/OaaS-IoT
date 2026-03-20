@@ -86,7 +86,7 @@ pub async fn start_caps_service(
     odgm: Arc<ObjectDataGridManager>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Read env for flags
-    let event_pipeline_v2 = std::env::var("ODGM_EVENT_PIPELINE_V2")
+    let event_pipeline_v2 = std::env::var("ODGM_EVENT_PIPELINE_ENABLED")
         .ok()
         .map(|v| v == "true" || v == "1")
         .unwrap_or(false);

@@ -247,7 +247,7 @@ async fn controller_deletion_cleans_children_and_finalizer() {
                 min_scale: Some(1),
                 max_scale: None,
                 wasm_fuel: None,
-            });
+            }),
             config: std::collections::HashMap::new(),
         }],
         nfr_requirements: None,

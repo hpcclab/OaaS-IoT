@@ -14,7 +14,7 @@ COPY tools/pixel-canvas/frontend/ ./frontend/
 RUN npm run build -w frontend
 
 # ── Stage 2: serve ────────────────────────────────────────────────────────────
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.29-alpine AS runtime
 
 # nginx docker image auto-substitutes *.template → conf.d/*.conf on startup,
 # injecting GATEWAY_URL into the proxy_pass directive.

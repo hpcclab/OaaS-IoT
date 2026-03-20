@@ -80,7 +80,7 @@ impl Default for EventPipelineConfig {
 
 impl EventPipelineConfig {
     pub fn from_env() -> Self {
-        let enabled = std::env::var("ODGM_EVENT_PIPELINE_V2")
+        let enabled = std::env::var("ODGM_EVENT_PIPELINE_ENABLED")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(true);
@@ -330,11 +330,7 @@ impl ShardBuilder<AnyStorage, ()> {
         // If MST sync events are enabled, build the V2 dispatcher now so the
         // MST networking layer can emit MutationSource::Sync events.
         let v2_for_mst = if epc.enabled && epc.mst_sync_events {
-            Some(build_event_dispatcher(
-                session,
-                &self.event_config,
-                &epc,
-            ))
+            Some(build_event_dispatcher(session, &self.event_config, &epc))
         } else {
             None
         }
@@ -458,11 +454,8 @@ where
             ))
         });
 
-        let v2_dispatcher = build_event_dispatcher(
-            &session,
-            &self.event_config,
-            &epc,
-        );
+        let v2_dispatcher =
+            build_event_dispatcher(&session, &self.event_config, &epc);
 
         ObjectUnifiedShard::new_full(
             metadata,

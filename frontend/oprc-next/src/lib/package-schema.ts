@@ -47,6 +47,7 @@ export const provisionConfigSchema = z.object({
   memory_limit: z.string().nullable().default(null),
   min_scale: z.number().int().min(0).nullable().default(null),
   max_scale: z.number().int().min(0).nullable().default(null),
+  wasm_fuel: z.number().int().min(0).nullable().default(null),
 });
 
 export const stateSpecificationSchema = z.object({
@@ -114,6 +115,7 @@ export const classSchema = z.object({
   description: z.string().nullable().default(null),
   state_spec: stateSpecificationSchema.nullable().default(null),
   function_bindings: z.array(functionBindingSchema).default([]),
+  options: z.record(z.string(), z.string()).default({}),
 });
 
 export const functionSchema = z.object({

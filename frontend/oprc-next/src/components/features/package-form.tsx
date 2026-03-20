@@ -16,6 +16,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Plus, Trash, AlertCircle } from "lucide-react";
+import Editor from "@monaco-editor/react";
+import { useTheme } from "next-themes";
 import type { OPackage } from "@/lib/bindings/OPackage";
 import type { OFunction } from "@/lib/bindings/OFunction";
 import type { OClass } from "@/lib/bindings/OClass";
@@ -85,6 +87,7 @@ const DEFAULT_PROVISION_CONFIG: ProvisionConfig = {
   memory_limit: null,
   min_scale: null,
   max_scale: null,
+  wasm_fuel: null,
 };
 
 const DEFAULT_STATE_SPEC: StateSpecification = {
@@ -413,9 +416,16 @@ function FunctionCard({
             <Label>Type</Label>
             <Select
               value={fn.function_type}
-              onValueChange={(v) =>
-                onUpdate({ function_type: v as FunctionType })
-              }
+              onValueChange={(v) => {
+                const update: Partial<OFunction> = { function_type: v as FunctionType };
+                if (v === "WASM" && !fn.provision_config?.wasm_fuel) {
+                  update.provision_config = {
+                    ...(fn.provision_config ?? DEFAULT_PROVISION_CONFIG),
+                    wasm_fuel: 1000000000000,
+                  };
+                }
+                onUpdate(update);
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -463,7 +473,8 @@ function FunctionCard({
               )}
 
               {fn.function_type === "WASM" && (
-                <div className="space-y-1.5">
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
                   <Label>WASM Module URL</Label>
                   <div className="flex gap-2">
                     <Input
@@ -500,6 +511,21 @@ function FunctionCard({
                         ))}
                       </select>
                     )}
+                  </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>WASM Fuel</Label>
+                    <Input
+                      type="number"
+                      placeholder="Default: 1000000000"
+                      value={fn.provision_config?.wasm_fuel ?? ""}
+                      onChange={(e) =>
+                        updateProvision({
+                          wasm_fuel: e.target.value ? Number(e.target.value) : null,
+                        })
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">Max fuel per invocation. Leave empty for default (1B).</p>
                   </div>
                 </div>
               )}
@@ -884,6 +910,16 @@ function ClassCard({
           )}
         </div>
 
+        {/* Options */}
+        <KeyValueListField
+          label="Options"
+          entries={cls.options ?? {}}
+          onChange={(options) => onUpdate({ options })}
+          keyPlaceholder="e.g., zenoh_event_publish"
+          valuePlaceholder="e.g., true"
+          helperText='Recognised keys: zenoh_event_publish (true/false), zenoh_event_locality (session_local/any/remote), ws_event_include_values (true/false)'
+        />
+
         {/* Function Bindings */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -1036,6 +1072,7 @@ function CodeTab({
   onChange: (data: OPackage) => void;
   errors?: z.ZodError;
 }) {
+  const { resolvedTheme } = useTheme();
   const [format, setFormat] = useState<CodeFormat>("json");
   const [text, setText] = useState("");
   const [parseError, setParseError] = useState<string | null>(null);
@@ -1141,11 +1178,23 @@ function CodeTab({
 
       {/* Editor */}
       <div className="relative border rounded-md overflow-hidden">
-        <textarea
-          className="w-full h-[400px] p-4 font-mono text-sm resize-none bg-muted/30 focus:outline-none focus:ring-2 focus:ring-ring rounded-md"
+        <Editor
+          height="400px"
+          language={format}
+          theme={resolvedTheme === "dark" ? "vs-dark" : "light"}
           value={text}
-          onChange={(e) => handleTextChange(e.target.value)}
-          spellCheck={false}
+          onChange={(val) => handleTextChange(val ?? "")}
+          options={{
+            minimap: { enabled: false },
+            fontSize: 14,
+            lineNumbers: "on",
+            wordWrap: "on",
+            scrollBeyondLastLine: false,
+            automaticLayout: true,
+            tabSize: 2,
+            insertSpaces: true,
+            padding: { top: 8, bottom: 8 },
+          }}
         />
       </div>
 

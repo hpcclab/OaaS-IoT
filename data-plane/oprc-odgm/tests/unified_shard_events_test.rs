@@ -11,8 +11,8 @@ use oprc_odgm::events::EventManagerImpl;
 use oprc_odgm::replication::no_replication::NoReplication;
 use oprc_odgm::shard::ShardError;
 use oprc_odgm::shard::traits::ShardMetadata;
-use oprc_odgm::shard::{ObjectShard, ObjectUnifiedShard};
 use oprc_odgm::shard::{ObjectData, ObjectVal, ShardOptions};
+use oprc_odgm::shard::{ObjectShard, ObjectUnifiedShard};
 
 // const ENABLE_STRING_IDS: bool = true; // deprecated feature flag
 const MAX_STRING_ID_LEN: usize = 160;
@@ -456,7 +456,7 @@ async fn test_v2_trigger_execution_records_in_test_tap()
     // Enable V2 pipeline + trigger test tap for this test (unsafe set_var wrapper used in build to allow mutation in tests)
     // Allow environment mutation in test context
     unsafe {
-        std::env::set_var("ODGM_EVENT_PIPELINE_V2", "true");
+        std::env::set_var("ODGM_EVENT_PIPELINE_ENABLED", "true");
         std::env::set_var("ODGM_TRIGGER_TEST_TAP", "1");
     }
 

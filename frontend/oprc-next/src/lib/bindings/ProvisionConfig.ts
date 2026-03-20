@@ -10,4 +10,8 @@ container_image?: string | null,
  * URL to a compiled WASI component (.wasm). HTTP, OCI, or file:// path.
  * Used when function_type is WASM.
  */
-wasm_module_url?: string | null, port: number | null, max_concurrency: number, need_http2: boolean, cpu_request: string | null, memory_request: string | null, cpu_limit: string | null, memory_limit: string | null, min_scale: number | null, max_scale: number | null, };
+wasm_module_url?: string | null, port: number | null, max_concurrency: number, need_http2: boolean, cpu_request: string | null, memory_request: string | null, cpu_limit: string | null, memory_limit: string | null, min_scale: number | null, max_scale: number | null, 
+/**
+ * Maximum WASM fuel consumed per invocation. None uses the runtime default (1_000_000_000).
+ */
+wasm_fuel?: number | null, };

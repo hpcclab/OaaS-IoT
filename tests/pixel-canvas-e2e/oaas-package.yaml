@@ -3,7 +3,7 @@ classes:
   - key: pixel-canvas
     options:
       zenoh_event_publish: "true"
-      zenoh_event_locality: "session_local"
+      zenoh_event_locality: "any"
       ws_event_include_values: "true"
     function_bindings:
       - name: paint
@@ -22,5 +22,5 @@ functions:
   - key: pixel-canvas-wasm
     function_type: WASM
     provision_config:
-      wasm_module_url: "./tools/pixel-canvas/wasm-guest/dist/pixel-canvas.wasm"
+      wasm_module_url: "./tools/pixel-canvas/wasm-guest/dist/pixel-canvas-wasm.wasm"
       wasm_fuel: 1000000000000

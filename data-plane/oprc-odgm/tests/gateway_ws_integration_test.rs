@@ -50,7 +50,7 @@ async fn odgm_to_gateway_ws_object_event() {
     // Enable V2 pipeline + Zenoh publication with session_local locality
     // so events travel within this process without a Zenoh router.
     unsafe {
-        std::env::set_var("ODGM_EVENT_PIPELINE_V2", "true");
+        std::env::set_var("ODGM_EVENT_PIPELINE_ENABLED", "true");
         std::env::set_var("ODGM_ZENOH_EVENT_PUBLISH", "true");
         std::env::set_var("ODGM_ZENOH_EVENT_LOCALITY", "session_local");
     }
@@ -73,7 +73,11 @@ async fn odgm_to_gateway_ws_object_event() {
     shard.initialize().await.expect("shard init");
 
     // ── Build Gateway with WS enabled, sharing the same Zenoh session ──
-    let app = oprc_gateway::build_router(session.clone(), Duration::from_millis(200), true);
+    let app = oprc_gateway::build_router(
+        session.clone(),
+        Duration::from_millis(200),
+        true,
+    );
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -89,12 +93,10 @@ async fn odgm_to_gateway_ws_object_event() {
 
     // ── Connect WS client ──
     let oid = "ws-obj-1";
-    let url = format!(
-        "ws://{}/api/class/{}/0/objects/{}/ws",
-        addr, CLS, oid
-    );
-    let (mut ws_stream, _) =
-        tokio_tungstenite::connect_async(&url).await.expect("WS connect");
+    let url = format!("ws://{}/api/class/{}/0/objects/{}/ws", addr, CLS, oid);
+    let (mut ws_stream, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS connect");
 
     // Wait for the Zenoh subscriber in the Gateway to be registered
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -114,7 +116,8 @@ async fn odgm_to_gateway_ws_object_event() {
         other => panic!("expected Text frame, got {:?}", other),
     };
 
-    let payload: serde_json::Value = serde_json::from_str(&text).expect("JSON parse");
+    let payload: serde_json::Value =
+        serde_json::from_str(&text).expect("JSON parse");
     assert_eq!(payload["object_id"], oid);
     assert_eq!(payload["cls_id"], CLS);
     assert_eq!(payload["partition_id"], 0);
@@ -130,7 +133,7 @@ async fn odgm_to_gateway_ws_object_event() {
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn odgm_to_gateway_ws_class_level() {
     unsafe {
-        std::env::set_var("ODGM_EVENT_PIPELINE_V2", "true");
+        std::env::set_var("ODGM_EVENT_PIPELINE_ENABLED", "true");
         std::env::set_var("ODGM_ZENOH_EVENT_PUBLISH", "true");
         std::env::set_var("ODGM_ZENOH_EVENT_LOCALITY", "session_local");
     }
@@ -151,7 +154,11 @@ async fn odgm_to_gateway_ws_class_level() {
         .expect("shard");
     shard.initialize().await.expect("shard init");
 
-    let app = oprc_gateway::build_router(session.clone(), Duration::from_millis(200), true);
+    let app = oprc_gateway::build_router(
+        session.clone(),
+        Duration::from_millis(200),
+        true,
+    );
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -165,8 +172,9 @@ async fn odgm_to_gateway_ws_class_level() {
 
     // Class-level WS subscription
     let url = format!("ws://{}/api/class/{}/ws", addr, CLS);
-    let (mut ws_stream, _) =
-        tokio_tungstenite::connect_async(&url).await.expect("WS connect");
+    let (mut ws_stream, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS connect");
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
@@ -177,11 +185,12 @@ async fn odgm_to_gateway_ws_class_level() {
     // Collect 2 events
     let mut received = Vec::new();
     for _ in 0..2 {
-        let msg = tokio::time::timeout(Duration::from_secs(5), ws_stream.next())
-            .await
-            .expect("WS timeout")
-            .expect("WS stream ended")
-            .expect("WS error");
+        let msg =
+            tokio::time::timeout(Duration::from_secs(5), ws_stream.next())
+                .await
+                .expect("WS timeout")
+                .expect("WS stream ended")
+                .expect("WS error");
         if let tokio_tungstenite::tungstenite::Message::Text(t) = msg {
             received.push(t.to_string());
         }
@@ -199,7 +208,7 @@ async fn odgm_to_gateway_ws_class_level() {
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn odgm_to_gateway_ws_update_and_delete() {
     unsafe {
-        std::env::set_var("ODGM_EVENT_PIPELINE_V2", "true");
+        std::env::set_var("ODGM_EVENT_PIPELINE_ENABLED", "true");
         std::env::set_var("ODGM_ZENOH_EVENT_PUBLISH", "true");
         std::env::set_var("ODGM_ZENOH_EVENT_LOCALITY", "session_local");
     }
@@ -220,7 +229,11 @@ async fn odgm_to_gateway_ws_update_and_delete() {
         .expect("shard");
     shard.initialize().await.expect("shard init");
 
-    let app = oprc_gateway::build_router(session.clone(), Duration::from_millis(200), true);
+    let app = oprc_gateway::build_router(
+        session.clone(),
+        Duration::from_millis(200),
+        true,
+    );
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -234,8 +247,9 @@ async fn odgm_to_gateway_ws_update_and_delete() {
 
     let oid = "mut-obj";
     let url = format!("ws://{}/api/class/{}/0/objects/{}/ws", addr, CLS, oid);
-    let (mut ws_stream, _) =
-        tokio_tungstenite::connect_async(&url).await.expect("WS connect");
+    let (mut ws_stream, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS connect");
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
@@ -246,11 +260,12 @@ async fn odgm_to_gateway_ws_update_and_delete() {
 
     let mut actions = Vec::new();
     for _ in 0..3 {
-        let msg = tokio::time::timeout(Duration::from_secs(5), ws_stream.next())
-            .await
-            .expect("WS timeout")
-            .expect("WS stream ended")
-            .expect("WS error");
+        let msg =
+            tokio::time::timeout(Duration::from_secs(5), ws_stream.next())
+                .await
+                .expect("WS timeout")
+                .expect("WS stream ended")
+                .expect("WS error");
         if let tokio_tungstenite::tungstenite::Message::Text(t) = msg {
             let payload: serde_json::Value = serde_json::from_str(&t).unwrap();
             let action = payload["changes"][0]["action"]

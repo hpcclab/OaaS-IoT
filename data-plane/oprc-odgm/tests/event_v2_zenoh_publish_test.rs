@@ -46,7 +46,7 @@ fn val(d: &str) -> ObjectVal {
 async fn v2_zenoh_publish_on_set_entry() {
     // Enable V2 pipeline + Zenoh publication
     unsafe {
-        std::env::set_var("ODGM_EVENT_PIPELINE_V2", "true");
+        std::env::set_var("ODGM_EVENT_PIPELINE_ENABLED", "true");
         std::env::set_var("ODGM_ZENOH_EVENT_PUBLISH", "true");
         // Use SessionLocal so the event stays in-process (no router needed)
         std::env::set_var("ODGM_ZENOH_EVENT_LOCALITY", "session_local");
@@ -79,13 +79,17 @@ async fn v2_zenoh_publish_on_set_entry() {
     shard.set_entry("obj1", "key1", val("hello")).await.unwrap();
 
     // Receive event from Zenoh
-    let sample = tokio::time::timeout(Duration::from_secs(5), subscriber.recv_async())
-        .await
-        .expect("Zenoh event timed out — V2 dispatcher did not publish to Zenoh")
-        .expect("subscriber recv error");
+    let sample = tokio::time::timeout(
+        Duration::from_secs(5),
+        subscriber.recv_async(),
+    )
+    .await
+    .expect("Zenoh event timed out — V2 dispatcher did not publish to Zenoh")
+    .expect("subscriber recv error");
 
     let payload: serde_json::Value =
-        serde_json::from_slice(&sample.payload().to_bytes()).expect("JSON parse");
+        serde_json::from_slice(&sample.payload().to_bytes())
+            .expect("JSON parse");
 
     assert_eq!(payload["object_id"], "obj1");
     assert_eq!(payload["cls_id"], CLS);
@@ -98,7 +102,7 @@ async fn v2_zenoh_publish_on_set_entry() {
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn v2_zenoh_publish_create_update_delete() {
     unsafe {
-        std::env::set_var("ODGM_EVENT_PIPELINE_V2", "true");
+        std::env::set_var("ODGM_EVENT_PIPELINE_ENABLED", "true");
         std::env::set_var("ODGM_ZENOH_EVENT_PUBLISH", "true");
         std::env::set_var("ODGM_ZENOH_EVENT_LOCALITY", "session_local");
     }
@@ -136,11 +140,13 @@ async fn v2_zenoh_publish_create_update_delete() {
     // Collect 3 Zenoh events
     let mut actions = Vec::new();
     for _ in 0..3 {
-        let sample =
-            tokio::time::timeout(Duration::from_secs(5), subscriber.recv_async())
-                .await
-                .expect("Zenoh event timed out")
-                .expect("recv error");
+        let sample = tokio::time::timeout(
+            Duration::from_secs(5),
+            subscriber.recv_async(),
+        )
+        .await
+        .expect("Zenoh event timed out")
+        .expect("recv error");
         let payload: serde_json::Value =
             serde_json::from_slice(&sample.payload().to_bytes()).unwrap();
         let action = payload["changes"][0]["action"]
@@ -157,7 +163,7 @@ async fn v2_zenoh_publish_create_update_delete() {
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn v2_zenoh_publish_batch_set() {
     unsafe {
-        std::env::set_var("ODGM_EVENT_PIPELINE_V2", "true");
+        std::env::set_var("ODGM_EVENT_PIPELINE_ENABLED", "true");
         std::env::set_var("ODGM_ZENOH_EVENT_PUBLISH", "true");
         std::env::set_var("ODGM_ZENOH_EVENT_LOCALITY", "session_local");
     }

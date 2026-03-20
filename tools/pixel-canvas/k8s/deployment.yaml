@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: ghcr.io/pawissanutt/oaas-rs/pixel-canvas-frontend:latest
+          image: ghcr.io/pawissanutt/oaas-rs/pixel-canvas-frontend:dev
           imagePullPolicy: Always
           ports:
             - name: http
@@ -38,10 +38,8 @@ spec:
           resources:
             requests:
               cpu: 50m
-              memory: 32Mi
             limits:
-              cpu: 200m
-              memory: 64Mi
+              cpu: 500m
 
 ---
 apiVersion: v1
@@ -59,3 +57,20 @@ spec:
       targetPort: http
       protocol: TCP
   type: ClusterIP
+--- 
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pixel-canvas-frontend-ingress
+spec:
+  rules:
+    - host: "canvas.129-114-108-168.nip.io"
+      http:
+        paths:
+          - pathType: Prefix
+            path: /
+            backend:
+              service:
+                name: pixel-canvas-frontend
+                port:
+                  number: 80

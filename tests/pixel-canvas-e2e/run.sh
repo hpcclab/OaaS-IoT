@@ -86,10 +86,10 @@ echo -e "${YELLOW}=== Pixel Canvas E2E Test ===${NC}"
 echo ""
 
 # Check WASM module exists
-WASM_PATH="$REPO_ROOT/tools/pixel-canvas/wasm-guest/dist/pixel-canvas.wasm"
+WASM_PATH="$REPO_ROOT/tools/pixel-canvas/wasm-guest/dist/pixel-canvas-wasm.wasm"
 if [[ ! -f "$WASM_PATH" ]]; then
     echo -e "${RED}ERROR: WASM module not found at $WASM_PATH${NC}"
-    echo "  Run:  cd tools/pixel-canvas/wasm-guest && npm run compile"
+    echo "  Run:  cd tools/pixel-canvas && npm run compile"
     exit 1
 fi
 
@@ -164,7 +164,11 @@ assert_contains "deployments contains pixel-canvas" "pixel-canvas" "$DEPLOYMENTS
 PACKAGES=$(curl -sf "$BASE/api/v1/packages")
 assert_contains "packages contains pixel-canvas" "pixel-canvas" "$PACKAGES"
 ENVS=$(curl -sf "$BASE/api/v1/envs")
-assert_eq "envs returns empty array" "[]" "$ENVS"
+assert_contains "envs contains local-dev" "local-dev" "$ENVS"
+TOPOLOGY=$(curl -sf "$BASE/api/v1/topology")
+assert_contains "topology contains pixel-canvas" "pixel-canvas" "$TOPOLOGY"
+ARTIFACTS=$(curl -sf "$BASE/api/v1/artifacts")
+assert_eq "artifacts returns empty array" "[]" "$ARTIFACTS"
 
 # ── Test: Object CRUD ─────────────────────────────────────────────────
 echo ""
@@ -250,13 +254,43 @@ GET_AFTER_META=$(curl -sf "$BASE/api/class/$CLS/$PID/objects/canvas-0-0" \
     -H "Accept: application/json")
 assert_contains "canvas-0-0 has _meta entry" "_meta" "$GET_AFTER_META"
 
+# ── Test: Clear Function ───────────────────────────────────────────────
+echo ""
+echo -e "${YELLOW}--- Clear Function ---${NC}"
+
+# canvas-0-0 has pixels (15:20) and _meta from earlier tests
+CLEAR_RESULT=$(curl -s -w "\n%{http_code}" \
+    -X POST "$BASE/api/class/$CLS/$PID/objects/canvas-0-0/invokes/clear" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json" \
+    -d '{}')
+CLEAR_STATUS=$(echo "$CLEAR_RESULT" | tail -1)
+assert_eq "invoke clear returns 200" "200" "$CLEAR_STATUS"
+
+# Verify pixels are gone but _meta survives
+GET_AFTER_CLEAR=$(curl -s \
+    -X POST "$BASE/api/class/$CLS/$PID/objects/canvas-0-0/invokes/getCanvas" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json" \
+    -d '{}')
+# getCanvas filters out _meta (non-string values), so cleared canvas should lack the pixel
+if echo "$GET_AFTER_CLEAR" | grep -qF "15:20"; then
+    echo -e "  ${RED}FAIL${NC}: clear removed pixel 15:20"
+    echo "    pixel 15:20 should not be present after clear"
+    FAIL=$((FAIL + 1))
+else
+    echo -e "  ${GREEN}PASS${NC}: clear removed pixel 15:20"
+    PASS=$((PASS + 1))
+fi
+
+# Verify _meta entry still exists via raw GET
+GET_RAW_AFTER_CLEAR=$(curl -sf "$BASE/api/class/$CLS/$PID/objects/canvas-0-0" \
+    -H "Accept: application/json")
+assert_contains "clear preserved _meta entry" "_meta" "$GET_RAW_AFTER_CLEAR"
+
 # ── Test: Game of Life (cross-object) ─────────────────────────────────
 echo ""
 echo -e "${YELLOW}--- Game of Life (Cross-Object Function) ---${NC}"
-
-# Clear canvas-0-0 first, then set up a blinker pattern
-curl -s -X POST "$BASE/api/class/$CLS/$PID/objects/canvas-0-0/invokes/clear" \
-    -H "Content-Type: application/json" -d '{}' > /dev/null 2>&1 || true
 
 # Set up a blinker pattern on canvas-0-0 (3 vertical alive cells)
 # Blinker: (15,14), (15,15), (15,16) → should rotate to horizontal

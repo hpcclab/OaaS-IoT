@@ -1,7 +1,7 @@
 use oprc_odgm::granular_trait::EntryStore;
 use oprc_odgm::shard::ObjectShard;
-use oprc_odgm::shard::{ShardBuilder, ShardOptions};
 use oprc_odgm::shard::traits::ShardMetadata;
+use oprc_odgm::shard::{ShardBuilder, ShardOptions};
 use oprc_zenoh::pool::Pool;
 use oprc_zenoh::{Envconfig, OprcZenohConfig};
 
@@ -25,7 +25,7 @@ fn metadata() -> ShardMetadata {
 
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn v2_empty_batch_noop() {
-    unsafe { std::env::set_var("ODGM_EVENT_PIPELINE_V2", "true") };
+    unsafe { std::env::set_var("ODGM_EVENT_PIPELINE_ENABLED", "true") };
     let cfg = OprcZenohConfig::init_from_env().unwrap();
     let pool = Pool::new(1, cfg);
     let session = pool.get_session().await.expect("session");

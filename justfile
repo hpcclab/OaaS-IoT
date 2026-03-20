@@ -59,7 +59,7 @@ system-e2e-clean:
 
 install-tools NEXT_PUBLIC_API_URL="":
     cd frontend/oprc-next; npm install; npm run build
-    cargo install --path tools/oprc-cli --features frontend
+    cargo install --path tools/oprc-cli 
     # cargo install --path data-plane/oprc-dev --bin check-delay
 
 cloc:

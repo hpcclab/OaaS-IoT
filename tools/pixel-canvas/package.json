@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "npm run dev -w frontend",
-    "build": "npm run build -w frontend",
+    "build": "npm run build -w frontend && npm run build -w wasm-guest",
     "compile": "npm run compile -w wasm-guest",
     "typecheck": "npm run typecheck -w frontend && npm run typecheck -w wasm-guest"
   }

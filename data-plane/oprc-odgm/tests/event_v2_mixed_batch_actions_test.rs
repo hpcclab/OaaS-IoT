@@ -34,7 +34,7 @@ fn val(d: &str) -> ObjectVal {
 
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn v2_mixed_batch_actions() {
-    unsafe { std::env::set_var("ODGM_EVENT_PIPELINE_V2", "true") };
+    unsafe { std::env::set_var("ODGM_EVENT_PIPELINE_ENABLED", "true") };
     let cfg = OprcZenohConfig::init_from_env().unwrap();
     let pool = Pool::new(1, cfg);
     let session = pool.get_session().await.expect("session");

@@ -132,7 +132,7 @@ async fn build_dev_router(
     let stub = stub_api::build_stub_api(&config.package);
 
     let router = gateway.merge(gateway_proxy).merge(stub).layer(
-        CorsLayer::permissive()
+        CorsLayer::very_permissive()
             // Cache preflight for 1 hour — prevents Chrome from sending
             // an OPTIONS request before every single API call.
             .max_age(StdDuration::from_secs(3600)),

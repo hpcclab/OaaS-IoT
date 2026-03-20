@@ -81,7 +81,7 @@ Made locality configurable via env var with `Remote` as default.
 |----------|--------|---------|-------------|
 | `ODGM_ZENOH_EVENT_PUBLISH` | `true` / `false` | `false` | Enable Zenoh event publishing |
 | `ODGM_ZENOH_EVENT_LOCALITY` | `session_local`, `any`, `remote` | `remote` | Zenoh publish locality |
-| `ODGM_EVENT_PIPELINE_V2` | `true` / `false` | `true` | Enable V2 event pipeline |
+| `ODGM_EVENT_PIPELINE_ENABLED` | `true` / `false` | `true` | Enable event pipeline |
 | `ODGM_EVENT_QUEUE_BOUND` | integer | `1024` | Event queue capacity |
 | `ODGM_EVENT_BCAST_BOUND` | integer | `256` | Broadcast channel capacity |
 | `ODGM_MST_SYNC_EVENTS` | `true` / `false` | `false` | Emit events for MST sync writes |

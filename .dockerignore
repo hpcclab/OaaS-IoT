@@ -1,17 +1,35 @@
-target/*
+# Build artifacts
+target/
+frontend/oprc-next/.next/
+frontend/oprc-next/node_modules/
+
+# Documentation
 *.md
 *.adoc
-*.yml
-*.yaml
-Dockerfile
-*.Dockerfile
-justfile
-k8s/*
-docs/*
+docs/
+LICENSE*
+
+# CI / IDE / VCS
+.git/
 .github/
 .vscode/
-**/node_modules/*
+.gitignore
+.dockerignore
+
+# Build & deploy configs
+*.yml
+*.yaml
+!docker-compose*.yml
+justfile
+k8s/
+build/
+
+# Dev / env files
 .env
 .env.*
 **/.env
 **/.env.*
+
+# Misc
+**/*.code-search
+**/node_modules/

@@ -14,7 +14,7 @@ fn make_target(fn_id: String) -> TriggerTarget {
 #[serial]
 async fn v2_ordering_monotonic_versions()
 -> Result<(), Box<dyn std::error::Error>> {
-    unsafe { std::env::set_var("ODGM_EVENT_PIPELINE_V2", "true") };
+    unsafe { std::env::set_var("ODGM_EVENT_PIPELINE_ENABLED", "true") };
 
     let mut ctx = EventTestContext::new().await?;
 
