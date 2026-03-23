@@ -6,3 +6,4 @@ build:
 
 install:
     npm install
+    cd wasm-guest; npm install
