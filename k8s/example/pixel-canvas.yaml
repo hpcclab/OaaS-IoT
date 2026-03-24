@@ -1,0 +1,26 @@
+name: pixel-canvas
+classes:
+  - key: pixel-canvas
+    options:
+      zenoh_event_publish: "true"
+      zenoh_event_locality: "any"
+      ws_event_include_values: "true"
+    function_bindings:
+      - name: paint
+        function_key: pixel-canvas-wasm
+      - name: paintBatch
+        function_key: pixel-canvas-wasm
+      - name: getCanvas
+        function_key: pixel-canvas-wasm
+      - name: setMeta
+        function_key: pixel-canvas-wasm
+      - name: clear
+        function_key: pixel-canvas-wasm
+      - name: golStep
+        function_key: pixel-canvas-wasm
+functions:
+  - key: pixel-canvas-wasm
+    function_type: WASM
+    provision_config:
+      wasm_module_url: "oci://ghcr.io/pawissanutt/oaas-rs/pixel-canvas-wasm:dev"
+      wasm_fuel: 1000000000000

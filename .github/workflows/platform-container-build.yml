@@ -85,3 +85,77 @@ jobs:
             fi
             docker push ${IMAGE_PREFIX}/$service:$VERSION
           done
+
+  build-and-push-wasm:
+    name: Build and Push WASM Artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install oras
+        uses: oras-project/setup-oras@v1
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute version tag
+        id: meta
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            RAW_VERSION=${GITHUB_REF#refs/tags/}
+          elif [[ $GITHUB_REF == refs/heads/* ]]; then
+            RAW_VERSION=${GITHUB_REF#refs/heads/}
+          else
+            RAW_VERSION=${GITHUB_SHA::8}
+          fi
+          SAFE_VERSION=${RAW_VERSION//\//-}
+          SAFE_VERSION=$(echo "$SAFE_VERSION" | tr '[:upper:]' '[:lower:]' | sed -E 's#[^a-z0-9._-]+#-#g' | sed -E 's#-+#-#g' | sed -E 's#(^-|-$)##g')
+          VERSION=${SAFE_VERSION:0:128}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          PUSH_LATEST=false
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            PUSH_LATEST=true
+          fi
+          echo "PUSH_LATEST=$PUSH_LATEST" >> $GITHUB_OUTPUT
+
+      - name: Install oaas-sdk-ts dependencies
+        working-directory: tools/oaas-sdk-ts
+        run: npm install
+
+      - name: Install oprc-compiler dependencies
+        working-directory: tools/oprc-compiler
+        run: npm install
+
+      - name: Build pixel-canvas WASM guest
+        working-directory: tools/pixel-canvas/wasm-guest
+        run: |
+          npm install
+          npm run build
+
+      - name: Push pixel-canvas-wasm to GHCR
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/oaas-rs/pixel-canvas-wasm"
+          WASM="tools/pixel-canvas/wasm-guest/dist/pixel-canvas-wasm.wasm"
+          VERSION="${{ steps.meta.outputs.VERSION }}"
+
+          oras push "${IMAGE}:${VERSION}" "${WASM}:application/wasm"
+
+          if [[ "${{ steps.meta.outputs.PUSH_LATEST }}" == "true" ]]; then
+            oras push "${IMAGE}:latest" "${WASM}:application/wasm"
+          else
+            echo "Skipping push of ${IMAGE}:latest (not main branch)"
+          fi
