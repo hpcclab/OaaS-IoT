@@ -138,7 +138,7 @@ jobs:
 
       - name: Install oprc-compiler dependencies
         working-directory: tools/oprc-compiler
-        run: npm install
+        run: npm install && npm run build
 
       - name: Build pixel-canvas WASM guest
         working-directory: tools/pixel-canvas/wasm-guest
