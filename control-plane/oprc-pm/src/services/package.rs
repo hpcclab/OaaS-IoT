@@ -43,8 +43,6 @@ impl PackageService {
         let pkg_name = package.name.clone();
 
         // 1. Validate package structure
-        // TODO: Add validation logic here
-        // package.validate()?;
         self.validator.validate(&package).await?;
 
         // 2. Check if package already exists

@@ -6,7 +6,7 @@
  */
 
 import { CANVAS_SIZE, CELL_PX } from "./types.js";
-import type { PixelMap } from "./types.js";
+import type { PixelMap, ClassConfig } from "./types.js";
 import { fetchCanvas, paintBatch, subscribeToObject, decodeChangeValue } from "./api.js";
 import type { WsEvent } from "./api.js";
 import { renderPixels } from "./render.js";
@@ -15,6 +15,7 @@ export class AudienceCanvas {
   private readonly gatewayBase: string;
   private readonly gridX: number;
   private readonly gridY: number;
+  private readonly opts: ClassConfig;
   private readonly cellSize = CELL_PX;
 
   private pixels: PixelMap = new Map();
@@ -34,11 +35,13 @@ export class AudienceCanvas {
     container: HTMLElement,
     gatewayBase: string,
     gridX: number,
-    gridY: number
+    gridY: number,
+    opts: ClassConfig = {}
   ) {
     this.gatewayBase = gatewayBase;
     this.gridX = gridX;
     this.gridY = gridY;
+    this.opts = opts;
 
     this.buildUI(container);
     this.attachEvents();
@@ -175,7 +178,7 @@ export class AudienceCanvas {
       if (color !== undefined) dirtyPixels.set(key, color);
     }
     this.dirty.clear();
-    const ok = await paintBatch(this.gatewayBase, this.gridX, this.gridY, dirtyPixels);
+    const ok = await paintBatch(this.gatewayBase, this.gridX, this.gridY, dirtyPixels, this.opts);
     if (ok) {
       this.setStatus(true, "saved");
     } else {
@@ -189,7 +192,8 @@ export class AudienceCanvas {
     const result = await fetchCanvas(
       this.gatewayBase,
       this.gridX,
-      this.gridY
+      this.gridY,
+      this.opts
     );
     if (!result.ok) {
       this.setStatus(false, "offline");
@@ -210,7 +214,8 @@ export class AudienceCanvas {
       this.gatewayBase,
       this.gridX,
       this.gridY,
-      (evt: WsEvent) => this.handleWsEvent(evt)
+      (evt: WsEvent) => this.handleWsEvent(evt),
+      this.opts
     );
   }
 

@@ -83,6 +83,10 @@ spec:
             - name: OPRC_GW_METRICS_PORT
               value: {{ printf "%d" (int .Values.gateway.env.metricsPort) | quote }}
             {{- end }}
+            {{- if .Values.gateway.env.wsEnabled }}
+            - name: GATEWAY_WS_ENABLED
+              value: "true"
+            {{- end }}
             # Zenoh config to talk to router service
             - name: OPRC_ZENOH_MODE
               value: "peer"

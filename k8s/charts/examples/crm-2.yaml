@@ -32,6 +32,26 @@ router:
     pullPolicy: Always
   extraEnv:
     OPRC_ZENOH_ADMINSPACE_ENABLED: "true"
+
+
+gateway:
+  enabled: true
+  image:
+    repository: ghcr.io/pawissanutt/oaas-rs/gateway
+    tag: "dev-alpha"
+    pullPolicy: Always
+  service:
+    type: NodePort
+    port: 80
+    targetPort: 8080
+    nodePort: 30281
+  env:
+    logLevel: "info,oprc_gateway=debug"
+    requestTimeoutMs: 30000
+    maxPayloadBytes: 4194304
+    retryAttempts: 0
+    wsEnabled: true
+
 # Scope CRM-2 to namespace oaas-2 and use it for default operations
 config:
   namespace: oaas-2

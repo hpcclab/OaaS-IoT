@@ -7,14 +7,15 @@ repository.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
-[[bin]]
-name = "ocli"
-path = "src/main.rs"
-
 
 [[bin]]
 name = "oprc-cli"
 path = "src/main.rs"
+
+[[bin]]
+name = "ocli"
+path = "src/../src/main.rs"
+
 
 [dependencies]
 anyhow = { workspace = true }

@@ -15,14 +15,20 @@ export function parseUrlConfig(): AppConfig | null {
   const gateway = param("gateway");
   if (!mode || !gateway) return null;
 
+  const classBase = param("classBase") || undefined;
+  const partitionStr = param("partition");
+  const partition = partitionStr !== "" ? Number(partitionStr) : undefined;
+
   if (mode === "audience") {
     const grid = param("grid") || "0-0";
     const [gx, gy] = grid.split("-").map(Number);
-    return { mode: "audience", gateway, gridX: gx, gridY: gy };
+    return { mode: "audience", gateway, classBase, partition, gridX: gx, gridY: gy };
   } else if (mode === "presenter") {
     return {
       mode: "presenter",
       gateway,
+      classBase,
+      partition,
       cols: Number(param("cols")) || 4,
       rows: Number(param("rows")) || 4,
     };
@@ -54,6 +60,10 @@ export function setupConfigForm(form: HTMLFormElement): void {
   const gateway = param("gateway");
   if (gateway)
     (document.getElementById("gateway") as HTMLInputElement).value = gateway;
+  if (param("classBase"))
+    (document.getElementById("classBase") as HTMLInputElement).value = param("classBase");
+  if (param("partition"))
+    (document.getElementById("partition") as HTMLInputElement).value = param("partition");
   if (param("grid"))
     (document.getElementById("grid") as HTMLInputElement).value = param("grid");
   if (param("cols"))
@@ -89,6 +99,10 @@ export function setupConfigForm(form: HTMLFormElement): void {
     }
 
     const p = new URLSearchParams({ mode: m, gateway: gw });
+    const classBase = (document.getElementById("classBase") as HTMLInputElement).value.trim();
+    if (classBase) p.set("classBase", classBase);
+    const partitionVal = (document.getElementById("partition") as HTMLInputElement).value.trim();
+    if (partitionVal !== "") p.set("partition", partitionVal);
     if (m === "audience") {
       p.set(
         "grid",

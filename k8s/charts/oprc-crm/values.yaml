@@ -293,6 +293,8 @@ gateway:
     metricsPort: "" # optional metrics port
     # Note: otel::tracing=trace is required for distributed tracing context propagation
     logLevel: "info,otel::tracing=trace"
+    # Enable WebSocket endpoints (/api/class/{cls}/{pid}/ws, /api/class/{cls}/{pid}/objects/{oid}/ws)
+    wsEnabled: false
 
   ingress:
     enabled: false

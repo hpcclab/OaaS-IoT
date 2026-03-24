@@ -23,14 +23,16 @@ function launch(): void {
         app,
         config.gateway,
         config.gridX ?? 0,
-        config.gridY ?? 0
+        config.gridY ?? 0,
+        { classBase: config.classBase, partition: config.partition }
       );
     } else if (config.mode === "presenter") {
       new PresenterMosaic(
         app,
         config.gateway,
         config.cols ?? 4,
-        config.rows ?? 4
+        config.rows ?? 4,
+        { classBase: config.classBase, partition: config.partition }
       );
     }
   } else {

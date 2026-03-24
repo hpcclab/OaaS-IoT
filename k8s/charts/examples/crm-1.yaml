@@ -55,6 +55,7 @@ gateway:
     requestTimeoutMs: 30000
     maxPayloadBytes: 4194304
     retryAttempts: 0
+    wsEnabled: true
 # Scope CRM-1 to namespace oaas-1 and use it for default operations
 config:
   namespace: oaas-1

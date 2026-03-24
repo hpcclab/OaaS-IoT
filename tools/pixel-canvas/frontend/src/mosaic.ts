@@ -6,7 +6,7 @@
  */
 
 import { CANVAS_SIZE } from "./types.js";
-import type { PixelMap } from "./types.js";
+import type { PixelMap, ClassConfig } from "./types.js";
 import { fetchCanvas, paintBatch, invokeGolStep, subscribeToPartition, decodeChangeValue } from "./api.js";
 import type { FetchResult, WsEvent } from "./api.js";
 import { renderPixels } from "./render.js";
@@ -16,6 +16,7 @@ export class PresenterMosaic {
   private readonly cols: number;
   private readonly rows: number;
   private readonly cellSize: number;
+  private readonly opts: ClassConfig;
 
   /** pixelMaps[x][y] = Map<"px:py", color> */
   private readonly pixelMaps: PixelMap[][];
@@ -43,11 +44,13 @@ export class PresenterMosaic {
     container: HTMLElement,
     gatewayBase: string,
     cols: number,
-    rows: number
+    rows: number,
+    opts: ClassConfig = {}
   ) {
     this.gatewayBase = gatewayBase;
     this.cols = cols;
     this.rows = rows;
+    this.opts = opts;
 
     // Compute tile display size so mosaic fits in ~700px
     this.cellSize = Math.max(
@@ -143,7 +146,7 @@ export class PresenterMosaic {
     for (let x = 0; x < this.cols; x++) {
       for (let y = 0; y < this.rows; y++) {
         promises.push(
-          fetchCanvas(this.gatewayBase, x, y).then((result) => ({ x, y, result }))
+          fetchCanvas(this.gatewayBase, x, y, this.opts).then((result) => ({ x, y, result }))
         );
       }
     }
@@ -183,7 +186,7 @@ export class PresenterMosaic {
       // — the fetch result is already authoritative.
       if (evt.version !== undefined && last !== undefined && evt.version > last + 1) {
         if (evt.version !== undefined) this.tileVersions.set(vk, evt.version);
-        fetchCanvas(this.gatewayBase, x, y).then((result) => {
+        fetchCanvas(this.gatewayBase, x, y, this.opts).then((result) => {
           if (!result.ok) return;
           this.pixelMaps[x][y] = result.pixels;
           const el = this.canvasEl(x, y);
@@ -209,7 +212,7 @@ export class PresenterMosaic {
       if (el) renderPixels(el, pixels, this.cellSize);
       this.statusEl.textContent = `● live — ${new Date().toLocaleTimeString()}`;
       this.statusEl.style.color = "#22c55e";
-    });
+    }, this.opts);
   }
 
   /** Attach direct pointer-drawing events to a tile canvas element. */
@@ -296,7 +299,7 @@ export class PresenterMosaic {
       const color = this.pixelMaps[x][y].get(k);
       if (color !== undefined) batch.set(k, color);
     }
-    const ok = await paintBatch(this.gatewayBase, x, y, batch);
+    const ok = await paintBatch(this.gatewayBase, x, y, batch, this.opts);
     if (!ok) {
       for (const k of saved) dirty.add(k);
     }
@@ -307,7 +310,7 @@ export class PresenterMosaic {
     if (this.golBusy) return;
     this.golBusy = true;
     infoEl.textContent = "computing...";
-    const result = await invokeGolStep(this.gatewayBase, this.cols, this.rows);
+    const result = await invokeGolStep(this.gatewayBase, this.cols, this.rows, this.opts);
     if (result) {
       this.golGeneration++;
       infoEl.textContent = `gen ${this.golGeneration} | +${result.births} −${result.deaths}`;

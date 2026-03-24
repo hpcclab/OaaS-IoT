@@ -5,7 +5,7 @@
  */
 
 import { CLASS_NAME, PARTITION } from "./types.js";
-import type { PixelMap } from "./types.js";
+import type { PixelMap, ClassConfig } from "./types.js";
 
 /** Encode a CSS color string to base64 (UTF-8 safe). */
 function encodeColor(color: string): string {
@@ -13,13 +13,36 @@ function encodeColor(color: string): string {
 }
 
 /** Build the object URL for a canvas tile. */
-function objectUrl(gatewayBase: string, gridX: number, gridY: number): string {
-  return `${gatewayBase}/api/class/${CLASS_NAME}/${PARTITION}/objects/canvas-${gridX}-${gridY}`;
+function objectUrl(gatewayBase: string, gridX: number, gridY: number, cfg?: ClassConfig): string {
+  const { base, partition } = resolveClass(gatewayBase, cfg);
+  return `${base}/${partition}/objects/canvas-${gridX}-${gridY}`;
 }
 
 /** Convert an http(s) base URL to a ws(s) URL for WebSocket connections. */
 function toWsUrl(httpBase: string): string {
   return httpBase.replace(/^http(s?):\/\//, "ws$1://");
+}
+
+/**
+ * Resolve the class API base URL and partition from an optional ClassConfig.
+ * If cfg.classBase is provided it is used directly (trailing slash stripped);
+ * otherwise the default path is built from the gateway base URL.
+ */
+function resolveClass(gatewayBase: string, cfg?: ClassConfig): { base: string; partition: number } {
+  const base = cfg?.classBase
+    ? cfg.classBase.replace(/\/$/, "")
+    : `${gatewayBase.replace(/\/$/, "")}/api/class/${CLASS_NAME}`;
+  const partition = cfg?.partition ?? PARTITION;
+  return { base, partition };
+}
+
+/**
+ * Extract the class name segment from a classBase URL.
+ * e.g. "http://gw:8080/api/class/my-canvas" → "my-canvas"
+ */
+function classNameFrom(classBase: string): string {
+  const m = classBase.replace(/\/$/, "").match(/\/([^/]+)$/);
+  return m ? m[1] : CLASS_NAME;
 }
 
 export interface FetchResult {
@@ -96,9 +119,10 @@ function decodeEntryColor(raw: RawEntry): string | null {
 export async function fetchCanvas(
   gatewayBase: string,
   gridX: number,
-  gridY: number
+  gridY: number,
+  cfg?: ClassConfig
 ): Promise<FetchResult> {
-  const url = objectUrl(gatewayBase, gridX, gridY);
+  const url = objectUrl(gatewayBase, gridX, gridY, cfg);
   let res: Response;
   try {
     res = await fetch(url, {
@@ -110,7 +134,7 @@ export async function fetchCanvas(
   }
   if (res.status === 404) {
     // Object doesn't exist yet — create it so WASM functions can operate on it
-    await saveCanvas(gatewayBase, gridX, gridY, new Map());
+    await saveCanvas(gatewayBase, gridX, gridY, new Map(), cfg);
     return { ok: true, pixels: new Map() };
   }
   if (!res.ok) {
@@ -139,10 +163,12 @@ export function subscribeToObject(
   gatewayBase: string,
   gridX: number,
   gridY: number,
-  onEvent: (evt: WsEvent) => void
+  onEvent: (evt: WsEvent) => void,
+  cfg?: ClassConfig
 ): { destroy: () => void } {
-  const wsBase = toWsUrl(gatewayBase);
-  const path = `/api/class/${CLASS_NAME}/${PARTITION}/objects/canvas-${gridX}-${gridY}/ws`;
+  const { base, partition } = resolveClass(gatewayBase, cfg);
+  const wsBase = toWsUrl(base);
+  const path = `/${partition}/objects/canvas-${gridX}-${gridY}/ws`;
   return connectWs(`${wsBase}${path}`, onEvent);
 }
 
@@ -154,10 +180,12 @@ export function subscribeToObject(
  */
 export function subscribeToPartition(
   gatewayBase: string,
-  onEvent: (evt: WsEvent) => void
+  onEvent: (evt: WsEvent) => void,
+  cfg?: ClassConfig
 ): { destroy: () => void } {
-  const wsBase = toWsUrl(gatewayBase);
-  const path = `/api/class/${CLASS_NAME}/${PARTITION}/ws`;
+  const { base, partition } = resolveClass(gatewayBase, cfg);
+  const wsBase = toWsUrl(base);
+  const path = `/${partition}/ws`;
   return connectWs(`${wsBase}${path}`, onEvent);
 }
 
@@ -210,21 +238,24 @@ export async function saveCanvas(
   gatewayBase: string,
   gridX: number,
   gridY: number,
-  pixelMap: PixelMap
+  pixelMap: PixelMap,
+  cfg?: ClassConfig
 ): Promise<boolean> {
+  const { partition } = resolveClass(gatewayBase, cfg);
+  const clsName = cfg?.classBase ? classNameFrom(cfg.classBase) : CLASS_NAME;
   const entries: Record<string, { data: string; type: string }> = {};
   for (const [key, color] of pixelMap) {
     entries[key] = { data: encodeColor(color), type: "BYTE" };
   }
   const body = {
     metadata: {
-      cls_id: CLASS_NAME,
-      partition_id: PARTITION,
+      cls_id: clsName,
+      partition_id: partition,
       object_id: `canvas-${gridX}-${gridY}`,
     },
     entries,
   };
-  const url = objectUrl(gatewayBase, gridX, gridY);
+  const url = objectUrl(gatewayBase, gridX, gridY, cfg);
   try {
     const res = await fetch(url, {
       method: "PUT",
@@ -250,14 +281,15 @@ export async function paintBatch(
   gatewayBase: string,
   gridX: number,
   gridY: number,
-  pixels: PixelMap
+  pixels: PixelMap,
+  cfg?: ClassConfig
 ): Promise<boolean> {
   if (pixels.size === 0) return true;
   const entries: Record<string, string> = {};
   for (const [key, color] of pixels) {
     entries[key] = color;
   }
-  const url = `${objectUrl(gatewayBase, gridX, gridY)}/invokes/paintBatch`;
+  const url = `${objectUrl(gatewayBase, gridX, gridY, cfg)}/invokes/paintBatch`;
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -288,8 +320,10 @@ export async function invokeGolStep(
   gatewayBase: string,
   cols: number,
   rows: number,
+  cfg?: ClassConfig
 ): Promise<GolStepResult | null> {
-  const url = `${gatewayBase}/api/class/${CLASS_NAME}/${PARTITION}/objects/canvas-0-0/invokes/golStep`;
+  const { base, partition } = resolveClass(gatewayBase, cfg);
+  const url = `${base}/${partition}/objects/canvas-0-0/invokes/golStep`;
   try {
     const res = await fetch(url, {
       method: "POST",

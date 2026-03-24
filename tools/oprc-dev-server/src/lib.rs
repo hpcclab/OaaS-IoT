@@ -68,8 +68,11 @@ pub async fn start(config: DevServerConfig) -> anyhow::Result<()> {
 
     // Verify shards are created and ready
     for cls in &config.package.classes {
+        // Must use the FQ name since CreateCollectionRequest.name is now
+        // "{package}.{class}" to match the PM production convention.
+        let fq_key = format!("{}.{}", config.package.name, cls.key);
         let shards =
-            odgm.shard_manager.get_shards_for_collection(&cls.key).await;
+            odgm.shard_manager.get_shards_for_collection(&fq_key).await;
         if let Some(shard) = shards.first() {
             // Wait for shard readiness (WASM module loading, etc.)
             let mut ready_attempts = 0;
@@ -81,14 +84,14 @@ pub async fn start(config: DevServerConfig) -> anyhow::Result<()> {
                 ready_attempts += 1;
             }
             info!(
-                collection = %cls.key,
+                collection = %fq_key,
                 shard_id = shard.meta().id,
                 ready = *shard.watch_readiness().borrow(),
                 "Shard ready"
             );
         } else {
             tracing::warn!(
-                collection = %cls.key,
+                collection = %fq_key,
                 "Shard not found after creation"
             );
         }

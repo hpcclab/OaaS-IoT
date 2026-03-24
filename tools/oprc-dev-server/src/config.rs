@@ -77,7 +77,10 @@ fn class_to_request(
     };
 
     oprc_grpc::CreateCollectionRequest {
-        name: cls.key.clone(),
+        // Use fully-qualified name to match the PM production flow:
+        // PM sets collection name to "{package_name}.{class_key}" so the
+        // gateway URL segment /api/class/{cls}/... uses the same FQ key.
+        name: format!("{}.{}", pkg.name, cls.key),
         partition_count: 1,
         replica_count: 1,
         shard_assignments: vec![],

@@ -660,7 +660,7 @@ function FunctionCard({
         {/* Config (env vars) */}
         <KeyValueListField
           label="Config (env vars)"
-          entries={fn.config}
+          entries={fn.config ?? {}}
           onChange={(config) => onUpdate({ config })}
           keyPlaceholder="e.g., HTTP_PORT"
           valuePlaceholder="e.g., 80"
@@ -934,7 +934,7 @@ function ClassCard({
             </Button>
           </div>
 
-          {cls.function_bindings.map((binding, bi) => (
+          {(cls.function_bindings ?? []).map((binding, bi) => (
             <div
               key={bi}
               className="p-3 border border-border/50 rounded-md space-y-2 bg-muted/20"
@@ -1011,7 +1011,7 @@ function ClassCard({
                 <div className="space-y-1">
                   <Label className="text-xs">Access</Label>
                   <Select
-                    value={binding.access_modifier}
+                    value={binding.access_modifier ?? "PUBLIC"}
                     onValueChange={(v) =>
                       updateBinding(bi, {
                         access_modifier: v as FunctionAccessModifier,
@@ -1032,7 +1032,7 @@ function ClassCard({
                 </div>
                 <div className="flex items-center gap-1.5 pt-5">
                   <Switch
-                    checked={binding.stateless}
+                    checked={binding.stateless ?? false}
                     onCheckedChange={(checked) =>
                       updateBinding(bi, { stateless: checked })
                     }
@@ -1045,7 +1045,7 @@ function ClassCard({
 
               <StringListField
                 label="Parameters"
-                values={binding.parameters}
+                values={binding.parameters ?? []}
                 onChange={(parameters) => updateBinding(bi, { parameters })}
                 placeholder="Parameter name"
               />

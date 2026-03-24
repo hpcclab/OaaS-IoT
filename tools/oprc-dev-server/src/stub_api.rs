@@ -109,13 +109,15 @@ fn default_topo_source() -> String {
 /// Returns real `OPackage` / `OClassDeployment` JSON (matching the PM contract)
 /// plus stub endpoints for write operations and scripts (not available in dev mode).
 pub fn build_stub_api(pkg: &OPackage) -> Router {
-    // Synthesize deployments from the loaded OPackage classes
+    // Synthesize deployments from the loaded OPackage classes.
+    // The deployment key uses the FQ "{package}.{class}" name to match what
+    // the real PM returns; class_key stays as the unqualified key (PM contract).
     let deployments: Vec<OClassDeployment> = pkg
         .classes
         .iter()
         .map(|cls| {
             let mut dep = OClassDeployment {
-                key: cls.key.clone(),
+                key: format!("{}.{}", pkg.name, cls.key),
                 package_name: pkg.name.clone(),
                 class_key: cls.key.clone(),
                 condition: DeploymentCondition::Running,
@@ -288,7 +290,8 @@ async fn get_topology(
         });
 
         for cls in &pkg.classes {
-            let cls_id = format!("cls:{}", cls.key);
+            // Use FQ name for node IDs to match real PM topology responses.
+            let cls_id = format!("cls:{}.{}", pkg.name, cls.key);
             nodes.push(TopologyNode {
                 id: cls_id.clone(),
                 node_type: "class".into(),
@@ -306,7 +309,8 @@ async fn get_topology(
             });
 
             for binding in &cls.function_bindings {
-                let fn_id = format!("fn:{}:{}", cls.key, binding.name);
+                let fn_id =
+                    format!("fn:{}.{}:{}", pkg.name, cls.key, binding.name);
                 nodes.push(TopologyNode {
                     id: fn_id.clone(),
                     node_type: "function".into(),

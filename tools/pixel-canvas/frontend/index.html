@@ -33,6 +33,18 @@
       <span class="hint">Edge gateway for audience, cloud gateway for presenter.</span>
     </div>
 
+    <div class="field">
+      <label for="classBase">Class API prefix <small>(optional)</small></label>
+      <input type="text" id="classBase" placeholder="/api/class/pixel-canvas.pixel-canvas">
+      <span class="hint">Override when using a different gateway or class name. Leave blank to use <code>/api/class/pixel-canvas.pixel-canvas</code>.</span>
+    </div>
+
+    <div class="field">
+      <label for="partition">Partition <small>(optional)</small></label>
+      <input type="number" id="partition" placeholder="0" min="0">
+      <span class="hint">Default: 0. Override if targeting a different partition.</span>
+    </div>
+
     <!-- Audience-specific -->
     <div id="audience-fields">
       <div class="field">
