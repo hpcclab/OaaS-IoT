@@ -4,9 +4,21 @@ import type { StateSpecification } from "./StateSpecification";
 
 export type OClass = { key: string, description: string | null, state_spec: StateSpecification | null, function_bindings: Array<FunctionBinding>, 
 /**
- * Arbitrary key-value options forwarded to the data plane as
- * `ShardMetadata.options`. Recognised keys include
- * `zenoh_event_publish`, `zenoh_event_locality`, and
- * `ws_event_include_values`.
+ * Semantic / behavioral options for this collection type.
+ *
+ * These are **class-invariant**: forwarded to every ODGM shard as
+ * `ShardMetadata.options` in every deployment of this class. Use this
+ * field for data-plane toggles that define *what the class does*:
+ * - `zenoh_event_publish` — whether mutations are published to Zenoh
+ * - `zenoh_event_locality` — Zenoh interest scoping ("any", "local", …)
+ * - `ws_event_include_values` — whether WebSocket events carry full values
+ *
+ * **Note on `invoke_only_primary`**: do not set this manually; the PM
+ * derives it automatically from `state_spec.consistency_model == STRONG`.
+ *
+ * For per-deployment capacity/performance tuning (`batch_size`,
+ * `timeout_ms`, pool sizes), use `OClassDeployment.odgm.options` instead.
+ * For infrastructure config (partition count, shard type, logging), use
+ * `OClassDeployment.odgm`.
  */
 options?: { [key in string]: string }, };

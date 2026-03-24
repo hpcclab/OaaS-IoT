@@ -24,3 +24,12 @@ functions:
     provision_config:
       wasm_module_url: "oci://ghcr.io/pawissanutt/oaas-rs/pixel-canvas-wasm:dev"
       wasm_fuel: 1000000000000
+
+deployments: 
+  - key: pixel-canvas
+    package_name: pixel-canvas
+    class_key: pixel-canvas
+    target_envs: 
+      - oaas-1
+    odgm:
+      log: debug

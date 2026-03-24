@@ -14,4 +14,4 @@ wasm_module_url?: string | null, port: number | null, max_concurrency: number, n
 /**
  * Maximum WASM fuel consumed per invocation. None uses the runtime default (1_000_000_000).
  */
-wasm_fuel?: number | null, };
+wasm_fuel?: bigint | null, };

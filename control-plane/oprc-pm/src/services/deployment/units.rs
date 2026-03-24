@@ -2,7 +2,7 @@ use super::requirements::DeploymentRequirements;
 use crate::services::deployment::generate_shard_assignments_spec;
 use chrono::Utc;
 use oprc_grpc::types as grpc_types;
-use oprc_models::{OClass, OClassDeployment};
+use oprc_models::{OClass, OClassDeployment, enums::ConsistencyModel};
 use tracing::debug;
 
 fn dns_label_safe(mut s: String) -> String {
@@ -191,15 +191,48 @@ pub fn create_deployment_units_for_env(
                 disabled_fn: vec![],
             });
         }
+        // Three-source merge into OdgmConfig:
+        //   class.options              → base options (semantic / class-invariant behavior)
+        //   deployment.odgm.options    → overlay (per-deployment capacity/perf tuning; wins on conflict)
+        //   consistency_model          → derives shard_type and invoke_only_primary automatically
+        let consistency = class
+            .state_spec
+            .as_ref()
+            .map(|s| &s.consistency_model);
+        let is_strong = matches!(consistency, Some(ConsistencyModel::Strong));
+
+        // Build merged options: class first, then deployment overrides on top.
+        let mut merged_options = class.options.clone();
+        merged_options.extend(o.options.iter().map(|(k, v)| (k.clone(), v.clone())));
+        // Inject invoke_only_primary derived from consistency model (unless the
+        // user explicitly set it in deployment options, which takes precedence above).
+        if !merged_options.contains_key("invoke_only_primary") {
+            merged_options.insert(
+                "invoke_only_primary".into(),
+                if is_strong { "true" } else { "false" }.into(),
+            );
+        }
+
+        // Derive shard_type from consistency model when not explicitly overridden.
+        let shard_type = o.shard_type.clone().or_else(|| {
+            Some(
+                match consistency {
+                    Some(ConsistencyModel::Strong) => "raft",
+                    _ => "mst",
+                }
+                .to_string(),
+            )
+        });
+
         grpc_types::OdgmConfig {
             collections: o.collections.clone(),
             partition_count: o.partition_count,
             replica_count: o
                 .replica_count
                 .or(Some(requirements.target_replicas)),
-            shard_type: o.shard_type.clone(),
+            shard_type,
             invocations: inv_routes,
-            options: class.options.clone(),
+            options: merged_options,
             log: o.log.clone(),
             env_node_ids: env_map,
             odgm_node_id: ids_for_env.first().cloned(),
