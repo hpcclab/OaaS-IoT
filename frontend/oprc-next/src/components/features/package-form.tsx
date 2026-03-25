@@ -421,7 +421,7 @@ function FunctionCard({
                 if (v === "WASM" && !fn.provision_config?.wasm_fuel) {
                   update.provision_config = {
                     ...(fn.provision_config ?? DEFAULT_PROVISION_CONFIG),
-                    wasm_fuel: 1000000000000,
+                    wasm_fuel: BigInt("1000000000000"),
                   };
                 }
                 onUpdate(update);
@@ -518,10 +518,10 @@ function FunctionCard({
                     <Input
                       type="number"
                       placeholder="Default: 1000000000"
-                      value={fn.provision_config?.wasm_fuel ?? ""}
+                      value={fn.provision_config?.wasm_fuel?.toString() ?? ""}
                       onChange={(e) =>
                         updateProvision({
-                          wasm_fuel: e.target.value ? Number(e.target.value) : null,
+                          wasm_fuel: e.target.value ? BigInt(e.target.value) : null,
                         })
                       }
                     />

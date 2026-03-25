@@ -124,6 +124,10 @@ pub struct AppConfig {
     #[envconfig(from = "GATEWAY_URL")]
     pub gateway_url: Option<String>,
 
+    /// Per-environment gateway URLs as JSON object: {"cloud": "http://gw-cloud:8080", "edge": "http://gw-edge:8080"}
+    #[envconfig(from = "GATEWAY_URLS_JSON")]
+    pub gateway_urls_json: Option<String>,
+
     #[envconfig(from = "GATEWAY_TIMEOUT", default = "30")]
     pub gateway_timeout_seconds: u64,
 
@@ -318,8 +322,27 @@ impl AppConfig {
     }
 
     pub fn gateway(&self) -> Option<GatewayProxyConfig> {
-        self.gateway_url.as_ref().map(|url| GatewayProxyConfig {
-            url: url.clone(),
+        // Parse per-env gateway URLs if provided
+        let env_urls: HashMap<String, String> = self
+            .gateway_urls_json
+            .as_ref()
+            .and_then(|json| serde_json::from_str(json).ok())
+            .unwrap_or_default();
+
+        // Need at least one URL configured
+        if self.gateway_url.is_none() && env_urls.is_empty() {
+            return None;
+        }
+
+        let default_url = self
+            .gateway_url
+            .clone()
+            .or_else(|| env_urls.values().next().cloned())
+            .unwrap_or_default();
+
+        Some(GatewayProxyConfig {
+            url: default_url,
+            env_urls,
             timeout_seconds: self.gateway_timeout_seconds,
             max_payload_bytes: self.gateway_max_payload_bytes,
         })
@@ -351,6 +374,8 @@ impl AppConfig {
 #[derive(Debug, Clone)]
 pub struct GatewayProxyConfig {
     pub url: String,
+    /// Per-environment gateway URLs. Key = env name, value = base URL.
+    pub env_urls: HashMap<String, String>,
     pub timeout_seconds: u64,
     pub max_payload_bytes: usize,
 }

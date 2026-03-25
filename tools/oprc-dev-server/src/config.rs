@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use oprc_models::deployment::OClassDeployment;
@@ -21,16 +21,59 @@ impl DevServerConfig {
     }
 }
 
-/// Convert an OPackage into ODGM `CreateCollectionRequest`s.
+/// Extract the unique set of environment names referenced by deployments.
 ///
-/// **Primary path** (when `pkg.deployments` is non-empty): mirrors how the
-/// real PM handles `POST /api/v1/deployments` — one collection per deployment
-/// entry, using the deployment's ODGM infra config and the referenced class's
-/// semantic options.
+/// Returns `["local-dev"]` as fallback when no `target_envs` are declared.
+pub fn extract_env_names(pkg: &OPackage) -> Vec<String> {
+    let mut envs: HashSet<String> = HashSet::new();
+    for dep in &pkg.deployments {
+        for env in &dep.target_envs {
+            envs.insert(env.clone());
+        }
+    }
+    if envs.is_empty() {
+        vec!["local-dev".into()]
+    } else {
+        let mut sorted: Vec<String> = envs.into_iter().collect();
+        sorted.sort();
+        sorted
+    }
+}
+
+/// Return the `CreateCollectionRequest`s that should be materialised in a
+/// specific environment. Deployments whose `target_envs` include `env_name`
+/// (or whose `target_envs` is empty, meaning "all environments") are included.
+pub fn create_requests_for_env(
+    pkg: &OPackage,
+    env_name: &str,
+) -> Vec<oprc_grpc::CreateCollectionRequest> {
+    if !pkg.deployments.is_empty() {
+        pkg.deployments
+            .iter()
+            .filter(|dep| {
+                dep.target_envs.is_empty()
+                    || dep.target_envs.iter().any(|e| e == env_name)
+            })
+            .filter_map(|dep| {
+                let cls =
+                    pkg.classes.iter().find(|c| c.key == dep.class_key)?;
+                Some(deployment_to_request(dep, cls, pkg))
+            })
+            .collect()
+    } else {
+        // Fallback: iterate classes directly (no deployment section present)
+        pkg.classes
+            .iter()
+            .map(|cls| class_to_request(cls, pkg))
+            .collect()
+    }
+}
+
+/// Convert an OPackage into ODGM `CreateCollectionRequest`s (all envs merged).
 ///
-/// **Fallback** (when `pkg.deployments` is empty): one collection per class,
-/// using defaults. Useful for packages that are published before a deployment
-/// is created, or for unit tests.
+/// Kept for backward compatibility — callers that do not care about multi-env
+/// can still use this. Internally delegates to [`create_requests_for_env`] with
+/// a wildcard match.
 pub fn package_to_create_requests(
     pkg: &OPackage,
 ) -> Vec<oprc_grpc::CreateCollectionRequest> {
@@ -44,7 +87,6 @@ pub fn package_to_create_requests(
             })
             .collect()
     } else {
-        // Fallback: iterate classes directly (no deployment section present)
         pkg.classes
             .iter()
             .map(|cls| class_to_request(cls, pkg))
@@ -82,8 +124,8 @@ fn deployment_to_request(
     // CreateCollectionRequest uses i32; OdgmDataSpec uses u32, so cast here.
     let partition_count =
         odgm.and_then(|o| o.partition_count).unwrap_or(1) as i32;
-    // In dev mode there is always exactly one node, so cap replicas at 1 regardless
-    // of what the deployment requests.
+    // Each environment runs as an independent single-node ODGM cluster,
+    // so replicas are always 1.
     let replica_count = 1;
 
     // Derive shard_type from consistency_model when not explicitly set,
@@ -92,9 +134,8 @@ fn deployment_to_request(
     // does not need cluster replication.
     let consistency = cls.state_spec.as_ref().map(|s| &s.consistency_model);
     let is_strong = matches!(consistency, Some(ConsistencyModel::Strong));
-    let shard_type = odgm
-        .and_then(|o| o.shard_type.clone())
-        .unwrap_or_else(|| {
+    let shard_type =
+        odgm.and_then(|o| o.shard_type.clone()).unwrap_or_else(|| {
             match consistency {
                 Some(ConsistencyModel::Strong) => "raft",
                 Some(_) => "mst",
@@ -107,7 +148,8 @@ fn deployment_to_request(
     // then inject invoke_only_primary from consistency model if not set explicitly.
     let mut merged_options = cls.options.clone();
     if let Some(o) = odgm {
-        merged_options.extend(o.options.iter().map(|(k, v)| (k.clone(), v.clone())));
+        merged_options
+            .extend(o.options.iter().map(|(k, v)| (k.clone(), v.clone())));
     }
     if !merged_options.contains_key("invoke_only_primary") {
         merged_options.insert(

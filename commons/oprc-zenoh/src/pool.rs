@@ -81,35 +81,47 @@ impl Pool {
                     z_conf.gossip_enabled = Some(true);
                 }
             }
-            // Connect to all previously registered sessions across all pools via localhost
-            static GLOBAL_PORTS: OnceLock<StdMutex<Vec<u16>>> = OnceLock::new();
-            let ports_mutex =
-                GLOBAL_PORTS.get_or_init(|| StdMutex::new(Vec::new()));
-            let ports_snapshot = {
-                let ports = ports_mutex.lock().unwrap();
-                ports.clone()
-            };
-            if !ports_snapshot.is_empty() {
-                let peers: Vec<String> = ports_snapshot
-                    .into_iter()
-                    .map(|p| format!("tcp/127.0.0.1:{}", p))
-                    .collect();
-                z_conf.peers = Some(peers.join(","));
-            }
-            let session = zenoh::open(z_conf.create_zenoh()).await?;
-            pool.sessions.push(session);
-            // Register our listen port globally for future sessions in this process
-            {
-                let mut ports = ports_mutex.lock().unwrap();
-                // Only register when we know the concrete listen port (non-zero base path)
-                if pool.base_port != 0 {
-                    let listen_port = pool
-                        .base_port
-                        .saturating_add((pool.sessions.len() - 1) as u16);
-                    if !ports.contains(&listen_port) {
-                        ports.push(listen_port);
+
+            // When auto_connect is enabled (default), connect to all previously
+            // registered sessions across all pools via localhost and register
+            // our own listen port for future sessions.
+            // When auto_connect is disabled, skip this entirely so the session
+            // remains isolated (e.g. dev-server TCP proxy mode).
+            if self.z_conf.auto_connect {
+                static GLOBAL_PORTS: OnceLock<StdMutex<Vec<u16>>> =
+                    OnceLock::new();
+                let ports_mutex =
+                    GLOBAL_PORTS.get_or_init(|| StdMutex::new(Vec::new()));
+                let ports_snapshot = {
+                    let ports = ports_mutex.lock().unwrap();
+                    ports.clone()
+                };
+                if !ports_snapshot.is_empty() {
+                    let peers: Vec<String> = ports_snapshot
+                        .into_iter()
+                        .map(|p| format!("tcp/127.0.0.1:{}", p))
+                        .collect();
+                    z_conf.peers = Some(peers.join(","));
+                }
+
+                let session = zenoh::open(z_conf.create_zenoh()).await?;
+                pool.sessions.push(session);
+
+                // Register our listen port globally for future sessions
+                {
+                    let mut ports = ports_mutex.lock().unwrap();
+                    if pool.base_port != 0 {
+                        let listen_port = pool
+                            .base_port
+                            .saturating_add((pool.sessions.len() - 1) as u16);
+                        if !ports.contains(&listen_port) {
+                            ports.push(listen_port);
+                        }
                     }
                 }
+            } else {
+                let session = zenoh::open(z_conf.create_zenoh()).await?;
+                pool.sessions.push(session);
             }
         }
         Ok(pool.sessions[pool.next_idx % pool.sessions.len()].clone())

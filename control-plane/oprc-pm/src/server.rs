@@ -90,12 +90,15 @@ impl ApiServer {
         let (gateway_proxy, gateway_max_payload) = match gateway_config {
             Some(cfg) => {
                 info!(
-                    "Gateway proxy enabled: {} (max payload: {} bytes)",
-                    cfg.url, cfg.max_payload_bytes
+                    "Gateway proxy enabled: {} (max payload: {} bytes, env_gateways: {:?})",
+                    cfg.url,
+                    cfg.max_payload_bytes,
+                    cfg.env_urls.keys().collect::<Vec<_>>()
                 );
                 (
-                    Some(Arc::new(GatewayProxy::new(
+                    Some(Arc::new(GatewayProxy::with_env_gateways(
                         cfg.url,
+                        cfg.env_urls,
                         cfg.timeout_seconds,
                     ))),
                     cfg.max_payload_bytes,
@@ -183,7 +186,7 @@ impl ApiServer {
                 "/api/v1/scripts/{package}/{function}",
                 get(handlers::get_script_source),
             )
-            // Gateway reverse proxy
+            // Gateway reverse proxy (default — no env)
             .route("/api/gateway/{*path}", get(handlers::gateway_proxy))
             .route("/api/gateway/{*path}", post(handlers::gateway_proxy))
             .route(
@@ -191,6 +194,23 @@ impl ApiServer {
                 axum::routing::put(handlers::gateway_proxy),
             )
             .route("/api/gateway/{*path}", delete(handlers::gateway_proxy))
+            // Gateway reverse proxy (per-env)
+            .route(
+                "/api/gateway/env/{env}/{*path}",
+                get(handlers::gateway_proxy_env),
+            )
+            .route(
+                "/api/gateway/env/{env}/{*path}",
+                post(handlers::gateway_proxy_env),
+            )
+            .route(
+                "/api/gateway/env/{env}/{*path}",
+                axum::routing::put(handlers::gateway_proxy_env),
+            )
+            .route(
+                "/api/gateway/env/{env}/{*path}",
+                delete(handlers::gateway_proxy_env),
+            )
             // Health check endpoint
             .route("/health", get(health_check))
             .layer(axum::extract::DefaultBodyLimit::max(gateway_max_payload))

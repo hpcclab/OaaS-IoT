@@ -3,8 +3,11 @@ classes:
   - key: pixel-canvas
     options:
       zenoh_event_publish: "true"
-      zenoh_event_locality: "any"
+      zenoh_event_locality: "SessionLocal"
       ws_event_include_values: "true"
+      mst_sync_events: "true"
+    state_spec:
+      consistency_model: READ_YOUR_WRITE
     function_bindings:
       - name: paint
         function_key: pixel-canvas-wasm
@@ -30,6 +33,7 @@ deployments:
     package_name: pixel-canvas
     class_key: pixel-canvas
     target_envs: 
-      - oaas-1
+      - cloud
+      - edge
     odgm:
       log: debug

@@ -140,6 +140,7 @@ impl EventPipelineConfig {
         Self {
             zenoh_event_publish: true,
             zenoh_event_locality: zenoh::sample::Locality::SessionLocal,
+            mst_sync_events: true,
             ..Self::from_env()
         }
     }
@@ -170,6 +171,11 @@ impl EventPipelineConfig {
         if let Some(v) = opts.get("ws_event_include_values") {
             if let Ok(b) = v.parse::<bool>() {
                 self.include_entry_values = b;
+            }
+        }
+        if let Some(v) = opts.get("mst_sync_events") {
+            if let Ok(b) = v.parse::<bool>() {
+                self.mst_sync_events = b;
             }
         }
     }
@@ -329,8 +335,19 @@ impl ShardBuilder<AnyStorage, ()> {
 
         // If MST sync events are enabled, build the V2 dispatcher now so the
         // MST networking layer can emit MutationSource::Sync events.
+        // Sync events use SessionLocal locality: they only need to reach the
+        // co-located Gateway WS handler — the remote node runs its own sync
+        // and emits its own events, so publishing remotely would cause
+        // duplicate events on the other side.
         let v2_for_mst = if epc.enabled && epc.mst_sync_events {
-            Some(build_event_dispatcher(session, &self.event_config, &epc))
+            let mut sync_epc = epc.clone();
+            sync_epc.zenoh_event_locality =
+                zenoh::sample::Locality::SessionLocal;
+            Some(build_event_dispatcher(
+                session,
+                &self.event_config,
+                &sync_epc,
+            ))
         } else {
             None
         }
@@ -343,6 +360,7 @@ impl ShardBuilder<AnyStorage, ()> {
             mst_config,
             session.clone(),
             v2_for_mst,
+            epc.include_entry_values,
         );
 
         Ok(ShardBuilder {

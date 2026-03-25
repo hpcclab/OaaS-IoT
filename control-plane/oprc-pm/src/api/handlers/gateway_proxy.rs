@@ -7,7 +7,7 @@
 use crate::{errors::ApiError, server::AppState};
 use axum::{
     body::Body,
-    extract::{Request, State},
+    extract::{Path, Request, State},
     http::{Method, StatusCode},
     response::Response,
 };
@@ -17,14 +17,33 @@ use std::time::Duration;
 use tracing::{debug, error};
 
 /// Configuration for the Gateway proxy client.
+///
+/// Supports both single-gateway mode (`GATEWAY_URL`) and multi-gateway mode
+/// (`GATEWAY_URLS_JSON` — a JSON object mapping env names to gateway URLs).
 #[derive(Clone)]
 pub struct GatewayProxy {
     client: Client,
+    /// Default gateway URL (used when no env is specified).
     base_url: String,
+    /// Per-environment gateway URLs. Key = env name, value = base URL.
+    env_urls: std::collections::HashMap<String, String>,
 }
 
 impl GatewayProxy {
     pub fn new(base_url: String, timeout_seconds: u64) -> Self {
+        Self::with_env_gateways(
+            base_url,
+            std::collections::HashMap::new(),
+            timeout_seconds,
+        )
+    }
+
+    /// Create a proxy that can route to multiple gateways, one per env.
+    pub fn with_env_gateways(
+        default_url: String,
+        env_urls: std::collections::HashMap<String, String>,
+        timeout_seconds: u64,
+    ) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(timeout_seconds))
             .connect_timeout(Duration::from_secs(10))
@@ -37,14 +56,39 @@ impl GatewayProxy {
             .build()
             .expect("Failed to create HTTP client");
 
-        // Remove trailing slash from base_url
-        let base_url = base_url.trim_end_matches('/').to_string();
+        let base_url = default_url.trim_end_matches('/').to_string();
+        let env_urls = env_urls
+            .into_iter()
+            .map(|(k, v)| (k, v.trim_end_matches('/').to_string()))
+            .collect();
 
-        Self { client, base_url }
+        Self {
+            client,
+            base_url,
+            env_urls,
+        }
     }
 
     pub fn base_url(&self) -> &str {
         &self.base_url
+    }
+
+    /// Resolve the gateway base URL for a given environment.
+    /// Falls back to `base_url` if no env-specific URL is configured.
+    pub fn url_for_env(&self, env: Option<&str>) -> &str {
+        match env {
+            Some(name) => self
+                .env_urls
+                .get(name)
+                .map(|s| s.as_str())
+                .unwrap_or(&self.base_url),
+            None => &self.base_url,
+        }
+    }
+
+    /// List available environment names.
+    pub fn env_names(&self) -> Vec<&str> {
+        self.env_urls.keys().map(|s| s.as_str()).collect()
     }
 }
 
@@ -67,19 +111,49 @@ pub async fn gateway_proxy(
     })?;
 
     // Extract the path after /api/gateway/
-    let path = request.uri().path();
+    let path = request.uri().path().to_owned();
     let target_path = path
         .strip_prefix("/api/gateway/")
         .or_else(|| path.strip_prefix("/api/gateway"))
         .unwrap_or("");
 
+    forward_to_gateway(proxy, None, target_path, request).await
+}
+
+/// Per-environment gateway proxy handler.
+///
+/// Maps `/api/gateway/env/{env}/{path}` -> `{GATEWAY_URL_for_env}/{path}`
+#[tracing::instrument(skip(state, request), fields(method = %request.method(), uri = %request.uri()))]
+pub async fn gateway_proxy_env(
+    State(state): State<AppState>,
+    Path((env_name, rest)): Path<(String, String)>,
+    request: Request,
+) -> Result<Response, ApiError> {
+    let proxy = state.gateway_proxy.as_ref().ok_or_else(|| {
+        ApiError::ServiceUnavailable(
+            "Gateway proxy not configured. Set GATEWAY_URL environment variable."
+                .to_string(),
+        )
+    })?;
+
+    forward_to_gateway(proxy, Some(&env_name), &rest, request).await
+}
+
+/// Shared forwarding logic for both default and per-env gateway proxies.
+async fn forward_to_gateway(
+    proxy: &GatewayProxy,
+    env_name: Option<&str>,
+    target_path: &str,
+    request: Request,
+) -> Result<Response, ApiError> {
     // Build the target URL
     let query = request
         .uri()
         .query()
         .map(|q| format!("?{}", q))
         .unwrap_or_default();
-    let target_url = format!("{}/{}{}", proxy.base_url, target_path, query);
+    let gw_base = proxy.url_for_env(env_name);
+    let target_url = format!("{}/{}{}", gw_base, target_path, query);
 
     debug!("Proxying request to: {}", target_url);
 
@@ -90,7 +164,10 @@ pub async fn gateway_proxy(
         .await
         .map_err(|e| {
             error!("Failed to read request body: {}", e);
-            ApiError::InternalServerError(format!("Failed to read request body: {}", e))
+            ApiError::InternalServerError(format!(
+                "Failed to read request body: {}",
+                e
+            ))
         })?;
 
     // Build the proxied request
@@ -115,7 +192,12 @@ pub async fn gateway_proxy(
         // Skip hop-by-hop headers
         if matches!(
             name_str.as_str(),
-            "host" | "connection" | "keep-alive" | "transfer-encoding" | "te" | "trailer"
+            "host"
+                | "connection"
+                | "keep-alive"
+                | "transfer-encoding"
+                | "te"
+                | "trailer"
         ) {
             continue;
         }
@@ -143,11 +225,15 @@ pub async fn gateway_proxy(
     })?;
 
     // Convert reqwest response to axum response
-    let status = StatusCode::from_u16(response.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+    let status = StatusCode::from_u16(response.status().as_u16())
+        .unwrap_or(StatusCode::BAD_GATEWAY);
     let resp_headers = response.headers().clone();
     let body_bytes = response.bytes().await.map_err(|e| {
         error!("Failed to read Gateway response body: {}", e);
-        ApiError::InternalServerError(format!("Failed to read Gateway response: {}", e))
+        ApiError::InternalServerError(format!(
+            "Failed to read Gateway response: {}",
+            e
+        ))
     })?;
 
     // Build response
@@ -158,14 +244,21 @@ pub async fn gateway_proxy(
         let name_str = name.as_str().to_lowercase();
         if matches!(
             name_str.as_str(),
-            "connection" | "keep-alive" | "transfer-encoding" | "te" | "trailer"
+            "connection"
+                | "keep-alive"
+                | "transfer-encoding"
+                | "te"
+                | "trailer"
         ) {
             continue;
         }
         builder = builder.header(name, value);
     }
 
-    builder
-        .body(Body::from(body_bytes.to_vec()))
-        .map_err(|e| ApiError::InternalServerError(format!("Failed to build response: {}", e)))
+    builder.body(Body::from(body_bytes.to_vec())).map_err(|e| {
+        ApiError::InternalServerError(format!(
+            "Failed to build response: {}",
+            e
+        ))
+    })
 }

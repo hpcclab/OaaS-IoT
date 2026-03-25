@@ -19,6 +19,8 @@ use oprc_models::package::OPackage;
 struct StubState {
     packages: Arc<Vec<OPackage>>,
     deployments: Arc<Vec<OClassDeployment>>,
+    /// (env_name, gateway_port) pairs.
+    env_ports: Arc<Vec<(String, u16)>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -44,6 +46,9 @@ struct DeleteDeploymentResponse {
 struct ClusterInfoStub {
     name: String,
     health: ClusterHealthStub,
+    /// The URL the frontend should use to reach this env's gateway.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    gateway_url: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -117,7 +122,9 @@ fn default_topo_source() -> String {
 ///
 /// **Fallback** (when `pkg.deployments` is empty): synthesises one stub
 /// deployment per class (useful for packages that omit the `deployments:` section).
-pub fn build_stub_api(pkg: &OPackage) -> Router {
+pub fn build_stub_api(pkg: &OPackage, env_ports: &[(String, u16)]) -> Router {
+    let env_names: Vec<String> =
+        env_ports.iter().map(|(n, _)| n.clone()).collect();
     let deployments: Vec<OClassDeployment> = if !pkg.deployments.is_empty() {
         // Mirror the real PM: use the actual deployment entries from the package.
         pkg.deployments
@@ -130,17 +137,15 @@ pub fn build_stub_api(pkg: &OPackage) -> Router {
                 }
                 // Mark as running (dev mode has no actual scheduling phase).
                 d.condition = DeploymentCondition::Running;
-                // Default target env to "local-dev" when none is specified.
+                // Default target env when none is specified.
                 if d.target_envs.is_empty() {
-                    d.target_envs = vec!["local-dev".into()];
+                    d.target_envs = env_names.clone();
                 }
                 d
             })
             .collect()
     } else {
         // Fallback: synthesise one stub deployment per class.
-        // The deployment key uses the FQ "{package}.{class}" name to match what
-        // the real PM returns; class_key stays as the unqualified key (PM contract).
         pkg.classes
             .iter()
             .map(|cls| {
@@ -151,7 +156,7 @@ pub fn build_stub_api(pkg: &OPackage) -> Router {
                     condition: DeploymentCondition::Running,
                     ..Default::default()
                 };
-                dep.target_envs = vec!["local-dev".into()];
+                dep.target_envs = env_names.clone();
                 dep
             })
             .collect()
@@ -160,6 +165,7 @@ pub fn build_stub_api(pkg: &OPackage) -> Router {
     let state = StubState {
         packages: Arc::new(vec![pkg.clone()]),
         deployments: Arc::new(deployments),
+        env_ports: Arc::new(env_ports.to_vec()),
     };
 
     Router::new()
@@ -279,13 +285,22 @@ async fn delete_deployment(
 // Environment handlers
 // ---------------------------------------------------------------------------
 
-async fn list_envs() -> Json<Vec<ClusterInfoStub>> {
-    Json(vec![ClusterInfoStub {
-        name: "local-dev".into(),
-        health: ClusterHealthStub {
-            status: "Healthy".into(),
-        },
-    }])
+async fn list_envs(
+    axum::extract::State(state): axum::extract::State<StubState>,
+) -> Json<Vec<ClusterInfoStub>> {
+    Json(
+        state
+            .env_ports
+            .iter()
+            .map(|(name, port)| ClusterInfoStub {
+                name: name.clone(),
+                health: ClusterHealthStub {
+                    status: "Healthy".into(),
+                },
+                gateway_url: Some(format!("http://localhost:{}", port)),
+            })
+            .collect(),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -299,14 +314,16 @@ async fn get_topology(
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
 
-    // Environment node
-    nodes.push(TopologyNode {
-        id: "env:local-dev".into(),
-        node_type: "environment".into(),
-        status: Some("Healthy".into()),
-        metadata: None,
-        deployed_classes: None,
-    });
+    // Environment nodes (one per simulated env)
+    for (env_name, _) in state.env_ports.iter() {
+        nodes.push(TopologyNode {
+            id: format!("env:{}", env_name),
+            node_type: "environment".into(),
+            status: Some("Healthy".into()),
+            metadata: None,
+            deployed_classes: None,
+        });
+    }
 
     for pkg in state.packages.iter() {
         let pkg_id = format!("pkg:{}", pkg.name);
@@ -319,7 +336,6 @@ async fn get_topology(
         });
 
         for cls in &pkg.classes {
-            // Use FQ name for node IDs to match real PM topology responses.
             let cls_id = format!("cls:{}.{}", pkg.name, cls.key);
             nodes.push(TopologyNode {
                 id: cls_id.clone(),
@@ -332,10 +348,30 @@ async fn get_topology(
                 from_id: pkg_id.clone(),
                 to_id: cls_id.clone(),
             });
-            edges.push(TopologyEdge {
-                from_id: cls_id.clone(),
-                to_id: "env:local-dev".into(),
-            });
+
+            // Find which envs this class is deployed to
+            let target_envs: Vec<&str> = state
+                .deployments
+                .iter()
+                .filter(|d| d.class_key == cls.key)
+                .flat_map(|d| d.target_envs.iter().map(|s| s.as_str()))
+                .collect();
+            let envs_for_class = if target_envs.is_empty() {
+                state
+                    .env_ports
+                    .iter()
+                    .map(|(s, _)| s.as_str())
+                    .collect::<Vec<_>>()
+            } else {
+                target_envs
+            };
+
+            for env_name in &envs_for_class {
+                edges.push(TopologyEdge {
+                    from_id: cls_id.clone(),
+                    to_id: format!("env:{}", env_name),
+                });
+            }
 
             for binding in &cls.function_bindings {
                 let fn_id =

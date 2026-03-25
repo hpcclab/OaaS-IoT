@@ -23,7 +23,9 @@ use super::types::{
     GenericPagesResp, MstConfig, MstKey,
 };
 
-use crate::events::{ChangedKey, EventDispatcherRef, MutAction, MutationContext};
+use crate::events::{
+    ChangedKey, EventDispatcherRef, MutAction, MutationContext,
+};
 use crate::granular_key::{GranularRecord, parse_granular_key};
 
 type GenericMessageSerde = PostcardMsgSerde<GenericPageRangeMessage>;
@@ -119,6 +121,7 @@ where
     v2_dispatcher: Option<EventDispatcherRef>,
     cls_id: String,
     partition_id: u16,
+    include_entry_values: bool,
 }
 
 impl<T, S> ZenohMstNetworking<T, S>
@@ -143,6 +146,7 @@ where
         v2_dispatcher: Option<EventDispatcherRef>,
         cls_id: String,
         partition_id: u16,
+        include_entry_values: bool,
     ) -> Self {
         let handler =
             MstPageRequestHandlerImpl::new(storage.clone(), config.clone());
@@ -165,6 +169,7 @@ where
             v2_dispatcher,
             cls_id,
             partition_id,
+            include_entry_values,
         }
     }
 }
@@ -183,6 +188,7 @@ async fn handle_page_update<T, S>(
     v2_dispatcher: &Option<EventDispatcherRef>,
     cls_id: &str,
     partition_id: u16,
+    include_entry_values: bool,
 ) -> Result<(), MstError>
 where
     T: Clone
@@ -210,22 +216,27 @@ where
     let remote_pages = GenericNetworkPage::to_page_range(&pages);
 
     // Compare with local MST to find differences
-    let mut req = {
+    let req = {
         let mut mst_guard = mst.write().await;
         let _ = mst_guard.root_hash();
         let local_pages = mst_guard.serialise_page_ranges().unwrap_or(vec![]);
+        let local_empty = local_pages.is_empty();
         let diff_pages = diff(local_pages, remote_pages);
-        GenericLoadPageReq::from_diff(diff_pages)
+        let r = GenericLoadPageReq::from_diff(diff_pages);
+        // Fallback: when the local MST is empty it cannot produce pages for
+        // diff, so request the published remote pages directly.  When local is
+        // NOT empty and the diff is empty, both sides are genuinely in sync —
+        // skip the fetch entirely to avoid echo merges.
+        if r.pages.is_empty() && local_empty {
+            GenericLoadPageReq::from_pages(&pages)
+        } else {
+            r
+        }
     };
 
-    // Fallback: if diff yields no ranges (e.g., empty local state edge-case),
-    // request the published remote pages directly.
     if req.pages.is_empty() {
-        req = GenericLoadPageReq::from_pages(&pages);
-        if req.pages.is_empty() {
-            tracing::debug!("No diff and no direct pages to request; skipping");
-            return Ok(());
-        }
+        tracing::debug!("No differences found; skipping");
+        return Ok(());
     }
 
     tracing::debug!(
@@ -274,10 +285,9 @@ where
         for (key_vec, remote_value) in resp.items {
             let key_bytes = key_vec.clone();
             let key_slice = key_bytes.as_slice();
-            let final_value = if let Ok(Some(existing_bytes)) =
-                storage.get(key_slice).await
-            {
-                let existing = (config.deserialize)(existing_bytes.as_slice())
+            let existing_bytes = storage.get(key_slice).await.ok().flatten();
+            let final_value = if let Some(ref eb) = existing_bytes {
+                let existing = (config.deserialize)(eb.as_slice())
                     .map_err(|e| MstError(e.to_string()))?;
                 (config.merge_function)(existing, remote_value, node_id)
             } else {
@@ -285,6 +295,19 @@ where
             };
             let serialized = (config.serialize)(&final_value)
                 .map_err(|e| MstError(e.to_string()))?;
+
+            // Extract entry value before serialized is moved into storage.
+            let entry_value = if include_entry_values && v2_dispatcher.is_some()
+            {
+                postcard::from_bytes::<crate::shard::basic::ObjectVal>(
+                    &serialized,
+                )
+                .ok()
+                .map(|obj_val| obj_val.data)
+            } else {
+                None
+            };
+
             storage
                 .put(key_slice, StorageValue::from(serialized))
                 .await
@@ -296,21 +319,21 @@ where
             if let Some(dispatcher) = v2_dispatcher
                 && let Some((obj_id, GranularRecord::Entry(entry_key))) =
                     parse_granular_key(&key_bytes)
-                {
-                    let ctx = MutationContext::new_sync(
-                        obj_id.to_string(),
-                        cls_id.to_string(),
-                        partition_id,
-                        0, // version tracking not applicable for sync
-                        0,
-                        vec![ChangedKey {
-                            key_canonical: entry_key.to_owned(),
-                            action: MutAction::Update,
-                            value: None,
-                        }],
-                    );
-                    dispatcher.try_send(ctx);
-                }
+            {
+                let ctx = MutationContext::new_sync(
+                    obj_id.to_string(),
+                    cls_id.to_string(),
+                    partition_id,
+                    0, // version tracking not applicable for sync
+                    0,
+                    vec![ChangedKey {
+                        key_canonical: entry_key.to_owned(),
+                        action: MutAction::Update,
+                        value: entry_value,
+                    }],
+                );
+                dispatcher.try_send(ctx);
+            }
         }
     } else {
         tracing::info!("No items returned from owner {}", owner);
@@ -359,6 +382,7 @@ where
         let v2_dispatcher = self.v2_dispatcher.clone();
         let cls_id = self.cls_id.clone();
         let partition_id = self.partition_id;
+        let include_entry_values = self.include_entry_values;
 
         tracing::debug!("Spawning background task for page update handling");
         tokio::spawn(async move {
@@ -395,6 +419,7 @@ where
                             &v2_dispatcher,
                             &cls_id,
                             partition_id,
+                            include_entry_values,
                         )
                         .await
                         {

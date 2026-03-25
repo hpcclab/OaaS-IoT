@@ -8,6 +8,7 @@ import {
     ClipboardList,
     Code,
     Archive,
+    Bug,
     Settings
 } from "lucide-react";
 
@@ -56,6 +57,11 @@ export const NAV_ITEMS = [
         label: "Packages",
         href: "/packages",
         icon: ClipboardList,
+    },
+    {
+        label: "Debug",
+        href: "/debug",
+        icon: Bug,
     },
 ] as const;
 

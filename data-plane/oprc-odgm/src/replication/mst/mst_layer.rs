@@ -68,6 +68,7 @@ impl<
             config,
             zenoh_session,
             None,
+            false,
         )
     }
 
@@ -82,6 +83,7 @@ impl<
         config: MstConfig<T>,
         zenoh_session: zenoh::Session,
         v2_dispatcher: Option<EventDispatcherRef>,
+        include_entry_values: bool,
     ) -> Self {
         tracing::debug!("Creating new MST replication layer");
 
@@ -104,6 +106,7 @@ impl<
             v2_dispatcher.clone(),
             cls_id,
             partition_id,
+            include_entry_values,
         ));
 
         let (tx, rx) = tokio::sync::watch::channel(false);
@@ -194,7 +197,6 @@ impl<
 
                 // Get MST pages and publish them
                 let pages = {
-                    
                     match ranges_result {
                         Some(ranges_slice) => ranges_slice.to_vec(),
                         None => vec![],
@@ -439,7 +441,6 @@ impl<
         // Extract page ranges in a way that doesn't borrow
         let ranges_result = mst_guard.serialise_page_ranges();
         let pages = {
-            
             match ranges_result {
                 Some(ranges_slice) => ranges_slice.to_vec(),
                 None => vec![],
