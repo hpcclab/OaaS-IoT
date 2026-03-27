@@ -51,11 +51,16 @@ zenoh = { workspace = true }
 oprc-zenoh = { workspace = true }
 regex = { workspace = true }
 
+# Network simulation (CRM → local router via ZRPC)
+oprc-netsim = { workspace = true, features = ["zrpc"], optional = true }
+oprc-zrpc = { workspace = true, optional = true }
+
 [features]
 # Optional features to slim the binary in dev if needed
-default = ["otel"]
+default = ["otel", "network-sim"]
 prom = []
 otel = ["oprc-grpc/otel"]
+network-sim = ["dep:oprc-netsim", "dep:oprc-zrpc"]
 
 [dev-dependencies]
 wiremock = { workspace = true }

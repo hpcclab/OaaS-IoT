@@ -21,20 +21,24 @@ pub fn spawn_controller(client: Client) -> JoinHandle<anyhow::Result<()>> {
 }
 
 /// Spawn the HTTP server that embeds gRPC routes on the provided address.
-pub fn spawn_http_with_grpc(
+pub async fn spawn_http_with_grpc(
     addr: SocketAddr,
     client: Client,
     k8s_namespace: String,
     zenoh: Arc<Session>,
 ) -> JoinHandle<anyhow::Result<()>> {
-    let grpc_routes = build_grpc_routes(client, k8s_namespace, zenoh);
+    let grpc_routes = build_grpc_routes(client, k8s_namespace, zenoh).await;
     tokio::spawn(
         async move { run_http_server_with_grpc(addr, grpc_routes).await },
     )
 }
 
 /// Start both controller and HTTP+gRPC services and wait until either finishes.
-#[tracing::instrument(level = "debug", skip(client, cfg, zenoh), fields(http_addr))]
+#[tracing::instrument(
+    level = "debug",
+    skip(client, cfg, zenoh),
+    fields(http_addr)
+)]
 pub async fn run_all(
     client: Client,
     cfg: CrmConfig,
@@ -49,7 +53,8 @@ pub async fn run_all(
         client,
         cfg.k8s_namespace.clone(),
         zenoh,
-    );
+    )
+    .await;
 
     let (c_res, h_res) = try_join!(controller, http)?;
     c_res?;

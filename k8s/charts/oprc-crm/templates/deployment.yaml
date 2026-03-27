@@ -67,6 +67,16 @@ spec:
               value: {{ .Values.otel.samplerArg | default "1.0" | quote }}
             {{- end }}
             {{- end }}
+            {{- if .Values.router.networkSim }}
+            {{- if .Values.router.networkSim.enabled }}
+            - name: OPRC_NETSIM_ENABLED
+              value: "true"
+            {{- if .Values.router.networkSim.envName }}
+            - name: OPRC_NETSIM_ENV_NAME
+              value: {{ .Values.router.networkSim.envName | quote }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /health

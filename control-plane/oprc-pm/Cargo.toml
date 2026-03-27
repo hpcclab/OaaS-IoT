@@ -39,10 +39,7 @@ validator.workspace = true
 sha2.workspace = true
 
 # Optional: network simulation
-oprc-netsim = { workspace = true, features = ["zrpc"], optional = true }
-oprc-zrpc = { workspace = true, optional = true }
-zenoh = { workspace = true, optional = true }
-oprc-zenoh = { workspace = true, optional = true }
+oprc-netsim = { workspace = true, optional = true }
 
 [dev-dependencies]
 
@@ -64,9 +61,9 @@ http-body-util.workspace = true
 
 [features]
 # Default keeps core (no external storage or testcontainers) to avoid pulling images during plain builds.
-default = ["etcd"]
+default = ["etcd", "network-sim"]
 jaeger = []
 etcd = ["oprc-cp-storage/etcd"]
 etcd-tls = ["oprc-cp-storage/etcd-tls"]
 testcontainers = []
-network-sim = ["dep:oprc-netsim", "dep:oprc-zrpc", "dep:zenoh", "dep:oprc-zenoh"]
+network-sim = ["dep:oprc-netsim"]

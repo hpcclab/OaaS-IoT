@@ -123,7 +123,6 @@ impl ApiServer {
 
         let app = Self::build_router(
             state,
-            &config,
             otel_metrics,
             gateway_max_payload,
         );
@@ -133,7 +132,6 @@ impl ApiServer {
 
     fn build_router(
         state: AppState,
-        config: &ServerConfig,
         otel_metrics: Arc<OtelMetrics>,
         gateway_max_payload: usize,
     ) -> Router {
@@ -221,12 +219,20 @@ impl ApiServer {
             .layer(axum::middleware::from_fn(otel_metrics_middleware))
             .layer(Extension(otel_metrics))
             .layer(create_middleware_stack())
-            .fallback_service(
-                ServeDir::new(&config.static_dir).not_found_service(
-                    ServeFile::new(format!("{}/index.html", config.static_dir)),
-                ),
-            )
             .with_state(state)
+    }
+
+    /// Apply the SPA fallback service. Must be called **after** all routes
+    /// (including optional netsim routes) have been merged.
+    fn finalize(self) -> Router {
+        self.app.fallback_service(
+            ServeDir::new(&self.config.static_dir).not_found_service(
+                ServeFile::new(format!(
+                    "{}/index.html",
+                    self.config.static_dir
+                )),
+            ),
+        )
     }
 
     pub async fn serve(self) -> Result<(), Box<dyn std::error::Error>> {
@@ -237,7 +243,8 @@ impl ApiServer {
         info!("Health check available at: http://{}/health", addr);
         info!("API documentation: http://{}/api/v1", addr);
 
-        axum::serve(listener, self.app).await?;
+        let app = self.finalize();
+        axum::serve(listener, app).await?;
 
         Ok(())
     }
@@ -257,7 +264,7 @@ impl ApiServer {
     /// Consume and return the underlying Axum Router so callers can serve it themselves
     /// (e.g., on an ephemeral port in tests) and discover the bound address.
     pub fn into_router(self) -> Router {
-        self.app
+        self.finalize()
     }
 }
 

@@ -71,8 +71,11 @@ pub async fn build_api_server_from_env() -> Result<ApiServer> {
             ));
 
             (
-                Some(fs_store.clone() as Arc<dyn crate::services::artifact::ArtifactStore>),
-                Some(fs_store as Arc<dyn crate::services::artifact::SourceStore>),
+                Some(fs_store.clone()
+                    as Arc<dyn crate::services::artifact::ArtifactStore>),
+                Some(
+                    fs_store as Arc<dyn crate::services::artifact::SourceStore>,
+                ),
                 Some(script_svc),
             )
         } else {
@@ -83,6 +86,9 @@ pub async fn build_api_server_from_env() -> Result<ApiServer> {
     // Server
     let server_config = config.server();
     let gateway_config = config.gateway();
+    #[cfg(feature = "network-sim")]
+    let crm_manager_for_netsim = crm_manager.clone();
+
     #[allow(unused_mut)]
     let mut server = ApiServer::with_all(
         package_service,
@@ -98,7 +104,7 @@ pub async fn build_api_server_from_env() -> Result<ApiServer> {
     // Network simulation (optional — requires feature + OPRC_NETSIM_ENABLED)
     #[cfg(feature = "network-sim")]
     {
-        server = setup_netsim(server).await?;
+        server = setup_netsim(server, crm_manager_for_netsim).await?;
     }
 
     Ok(server)
@@ -106,12 +112,16 @@ pub async fn build_api_server_from_env() -> Result<ApiServer> {
 
 /// Conditionally wire up network simulation if `OPRC_NETSIM_ENABLED=true`.
 ///
+/// Uses the existing CRM gRPC connections — no separate Zenoh session needed.
+/// Each CRM forwards netsim commands to its co-deployed router via ZRPC.
+///
 /// Reads env vars:
 /// - `OPRC_NETSIM_ENABLED` — `"true"` to activate
-/// - `OPRC_NETSIM_ENVS` — comma-separated environment names (e.g. `"cloud,edge"`)
-/// - `OPRC_ZENOH_PEERS` — Zenoh peer endpoints for the control session
 #[cfg(feature = "network-sim")]
-async fn setup_netsim(server: ApiServer) -> Result<ApiServer> {
+async fn setup_netsim(
+    server: ApiServer,
+    crm_manager: Arc<CrmManager>,
+) -> Result<ApiServer> {
     let enabled = std::env::var("OPRC_NETSIM_ENABLED")
         .unwrap_or_default()
         .eq_ignore_ascii_case("true");
@@ -119,29 +129,11 @@ async fn setup_netsim(server: ApiServer) -> Result<ApiServer> {
         return Ok(server);
     }
 
-    let raw_envs = std::env::var("OPRC_NETSIM_ENVS").unwrap_or_default();
-    let env_names: Vec<String> = raw_envs
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
-    if env_names.is_empty() {
-        tracing::warn!("OPRC_NETSIM_ENABLED=true but OPRC_NETSIM_ENVS is empty");
-        return Ok(server);
-    }
+    let clusters = crm_manager.list_clusters().await;
+    info!(clusters = ?clusters, "Setting up network simulation control via CRM gRPC");
 
-    info!(envs = ?env_names, "Setting up network simulation control");
-
-    // Open a Zenoh session for ZRPC to the routers.
-    use envconfig::Envconfig;
-    let z_conf = oprc_zenoh::OprcZenohConfig::init_from_env()?;
-    let session: zenoh::Session = zenoh::open(z_conf.create_zenoh()).await.map_err(|e| {
-        anyhow::anyhow!("Failed to open Zenoh session for netsim: {e}")
-    })?;
-
-    let manager = Arc::new(
-        crate::services::netsim::NetsimManager::new(session, &env_names).await?,
-    );
+    let manager =
+        Arc::new(crate::services::netsim::NetsimManager::new(crm_manager));
 
     Ok(server.merge_netsim(manager))
 }

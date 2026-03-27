@@ -363,7 +363,8 @@ async fn e2e_with_kind_crm_single() -> Result<()> {
         client.clone(),
         "default".to_string(),
         zenoh,
-    );
+    )
+    .await;
 
     // Point PM at this CRM endpoint
     let crm_url = format!("http://{}", addr);
@@ -534,14 +535,16 @@ async fn e2e_with_kind_crm_multi() -> Result<()> {
         client.clone(),
         "default".to_string(),
         zenoh.clone(),
-    );
+    )
+    .await;
     let addr_b = oprc_test_utils::net::reserve_ephemeral_port().await?; // clusterB logical
     let _http_b = oprc_crm::runtime::spawn_http_with_grpc(
         addr_b,
         client.clone(),
         "default".to_string(),
         zenoh.clone(),
-    );
+    )
+    .await;
 
     let cluster_a_url = format!("http://{}", addr_a);
     let cluster_b_url = format!("http://{}", addr_b);

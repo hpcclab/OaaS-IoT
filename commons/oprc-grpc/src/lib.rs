@@ -8,7 +8,9 @@ pub mod base64_bytes {
     where
         S: Serializer,
     {
-        serializer.serialize_str(&base64::engine::general_purpose::STANDARD.encode(data))
+        serializer.serialize_str(
+            &base64::engine::general_purpose::STANDARD.encode(data),
+        )
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
@@ -28,19 +30,24 @@ pub mod base64_bytes_opt {
     use base64::Engine;
     use serde::{Deserialize, Deserializer, Serializer};
 
-    pub fn serialize<S>(data: &Option<Vec<u8>>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(
+        data: &Option<Vec<u8>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         match data {
-            Some(bytes) => {
-                serializer.serialize_some(&base64::engine::general_purpose::STANDARD.encode(bytes))
-            }
+            Some(bytes) => serializer.serialize_some(
+                &base64::engine::general_purpose::STANDARD.encode(bytes),
+            ),
             None => serializer.serialize_none(),
         }
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<u8>>, D::Error>
+    pub fn deserialize<'de, D>(
+        deserializer: D,
+    ) -> Result<Option<Vec<u8>>, D::Error>
     where
         D: Deserializer<'de>,
     {
@@ -91,6 +98,12 @@ pub mod proto {
         tonic::include_proto!("oaas.topology");
         #[cfg(not(feature = "grpc"))]
         include!(concat!(env!("OUT_DIR"), "/oaas.topology.rs"));
+    }
+    pub mod netsim {
+        #[cfg(feature = "grpc")]
+        tonic::include_proto!("oaas.netsim");
+        #[cfg(not(feature = "grpc"))]
+        include!(concat!(env!("OUT_DIR"), "/oaas.netsim.rs"));
     }
     pub mod oprc {
         #[cfg(feature = "grpc")]

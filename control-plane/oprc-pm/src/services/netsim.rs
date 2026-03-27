@@ -1,104 +1,88 @@
-//! Network simulation manager — ZRPC client for router netsim queryables.
+//! Network simulation manager — gRPC client to CRM netsim services.
 //!
-//! The PM opens a Zenoh session and uses ZRPC to send commands to each
-//! router's netsim queryable (key: `oprc/netsim/{env}`).
-//!
-//! Entity model: The PM knows which *environments* (routers) exist and
-//! can issue pairwise partition/heal/latency commands.
+//! The PM sends netsim commands to each CRM via gRPC. Each CRM forwards
+//! the command to its co-deployed router via ZRPC. This avoids the need
+//! for PM to maintain a direct Zenoh session to each router.
 
-use std::collections::HashMap;
+use std::sync::Arc;
 
-use oprc_netsim::zrpc_types::{
-    NETSIM_KEY_PREFIX, NetsimCommand, NetsimResponse, NetsimZrpcType,
-};
+use oprc_grpc::proto::netsim::{NetsimAction, NetsimControlRequest};
 use oprc_netsim::types::LinkState;
-use oprc_zrpc::ZrpcClient;
-use tokio::sync::RwLock;
-use tracing::{error, info};
+use tracing::error;
 
-/// Manages netsim state by proxying REST calls to ZRPC on each router.
+use crate::crm::manager::CrmManager;
+
+/// Manages network simulation via gRPC to CRM(s).
 pub struct NetsimManager {
-    /// ZRPC clients keyed by environment name.
-    clients: RwLock<HashMap<String, ZrpcClient<NetsimZrpcType>>>,
-    /// Zenoh session kept alive for the ZRPC clients.
-    _session: zenoh::Session,
+    crm_manager: Arc<CrmManager>,
 }
 
 impl NetsimManager {
-    /// Create a new manager, connecting to the given environment routers.
-    ///
-    /// `env_names` — names of environments whose routers have netsim queryables.
-    pub async fn new(
-        session: zenoh::Session,
-        env_names: &[String],
-    ) -> anyhow::Result<Self> {
-        let mut clients = HashMap::new();
-        for env in env_names {
-            let service_id = format!("{NETSIM_KEY_PREFIX}/{env}");
-            let client =
-                ZrpcClient::<NetsimZrpcType>::new(service_id, session.clone())
-                    .await;
-            clients.insert(env.clone(), client);
-        }
-        info!(envs = ?env_names, "NetsimManager initialized");
-        Ok(Self {
-            clients: RwLock::new(clients),
-            _session: session,
-        })
+    pub fn new(crm_manager: Arc<CrmManager>) -> Self {
+        Self { crm_manager }
+    }
+
+    /// Helper: send a netsim command to a specific cluster's CRM.
+    async fn send_cmd(
+        &self,
+        cluster: &str,
+        action: NetsimAction,
+        peer: &str,
+        latency_ms: u64,
+    ) -> anyhow::Result<oprc_grpc::proto::netsim::NetsimControlResponse> {
+        let client = self.crm_manager.get_client(cluster).await?;
+        let resp = client
+            .netsim_control(NetsimControlRequest {
+                action: action.into(),
+                peer: peer.to_string(),
+                latency_ms,
+            })
+            .await?;
+        Ok(resp)
     }
 
     // ---------------------------------------------------------------
     // Pairwise operations
     // ---------------------------------------------------------------
 
-    /// Partition link between env_a and env_b (sends to BOTH routers).
+    /// Partition link between env_a and env_b (sends to BOTH CRMs).
     pub async fn partition_link(
         &self,
         env_a: &str,
         env_b: &str,
-    ) -> anyhow::Result<Vec<NetsimResponse>> {
-        let clients = self.clients.read().await;
-        let mut responses = Vec::new();
-
-        // Tell router A to partition from B
-        if let Some(client) = clients.get(env_a) {
-            match client.call(&NetsimCommand::Partition { peer: env_b.to_string() }).await {
-                Ok(resp) => responses.push(resp),
-                Err(e) => error!(env = env_a, "ZRPC partition call failed: {e:?}"),
-            }
+    ) -> anyhow::Result<()> {
+        // Tell CRM-A to partition from B
+        if let Err(e) = self
+            .send_cmd(env_a, NetsimAction::Partition, env_b, 0)
+            .await
+        {
+            error!(env = env_a, "netsim partition call failed: {e:?}");
         }
-        // Tell router B to partition from A
-        if let Some(client) = clients.get(env_b) {
-            match client.call(&NetsimCommand::Partition { peer: env_a.to_string() }).await {
-                Ok(resp) => responses.push(resp),
-                Err(e) => error!(env = env_b, "ZRPC partition call failed: {e:?}"),
-            }
+        // Tell CRM-B to partition from A
+        if let Err(e) = self
+            .send_cmd(env_b, NetsimAction::Partition, env_a, 0)
+            .await
+        {
+            error!(env = env_b, "netsim partition call failed: {e:?}");
         }
-        Ok(responses)
+        Ok(())
     }
 
-    /// Heal link between env_a and env_b (sends to BOTH routers).
+    /// Heal link between env_a and env_b (sends to BOTH CRMs).
     pub async fn heal_link(
         &self,
         env_a: &str,
         env_b: &str,
-    ) -> anyhow::Result<Vec<NetsimResponse>> {
-        let clients = self.clients.read().await;
-        let mut responses = Vec::new();
-
-        if let Some(client) = clients.get(env_a) {
-            match client.call(&NetsimCommand::Heal { peer: env_b.to_string() }).await {
-                Ok(resp) => responses.push(resp),
-                Err(e) => error!(env = env_a, "ZRPC heal call failed: {e:?}"),
-            }
+    ) -> anyhow::Result<()> {
+        if let Err(e) = self.send_cmd(env_a, NetsimAction::Heal, env_b, 0).await
+        {
+            error!(env = env_a, "netsim heal call failed: {e:?}");
         }
-        if let Some(client) = clients.get(env_b) {
-            match client.call(&NetsimCommand::Heal { peer: env_a.to_string() }).await {
-                Ok(resp) => responses.push(resp),
-                Err(e) => error!(env = env_b, "ZRPC heal call failed: {e:?}"),
-            }
+        if let Err(e) = self.send_cmd(env_b, NetsimAction::Heal, env_a, 0).await
+        {
+            error!(env = env_b, "netsim heal call failed: {e:?}");
         }
-        Ok(responses)
+        Ok(())
     }
 
     /// Set latency on the link between env_a and env_b (both directions).
@@ -107,29 +91,20 @@ impl NetsimManager {
         env_a: &str,
         env_b: &str,
         latency_ms: u64,
-    ) -> anyhow::Result<Vec<NetsimResponse>> {
-        let clients = self.clients.read().await;
-        let mut responses = Vec::new();
-
-        if let Some(client) = clients.get(env_a) {
-            match client.call(&NetsimCommand::SetLatency {
-                peer: env_b.to_string(),
-                latency_ms,
-            }).await {
-                Ok(resp) => responses.push(resp),
-                Err(e) => error!(env = env_a, "ZRPC set_latency failed: {e:?}"),
-            }
+    ) -> anyhow::Result<()> {
+        if let Err(e) = self
+            .send_cmd(env_a, NetsimAction::SetLatency, env_b, latency_ms)
+            .await
+        {
+            error!(env = env_a, "netsim set_latency failed: {e:?}");
         }
-        if let Some(client) = clients.get(env_b) {
-            match client.call(&NetsimCommand::SetLatency {
-                peer: env_a.to_string(),
-                latency_ms,
-            }).await {
-                Ok(resp) => responses.push(resp),
-                Err(e) => error!(env = env_b, "ZRPC set_latency failed: {e:?}"),
-            }
+        if let Err(e) = self
+            .send_cmd(env_b, NetsimAction::SetLatency, env_a, latency_ms)
+            .await
+        {
+            error!(env = env_b, "netsim set_latency failed: {e:?}");
         }
-        Ok(responses)
+        Ok(())
     }
 
     // ---------------------------------------------------------------
@@ -137,39 +112,28 @@ impl NetsimManager {
     // ---------------------------------------------------------------
 
     /// Partition env from ALL other envs.
-    pub async fn partition_env(&self, env: &str) -> anyhow::Result<Vec<String>> {
-        let clients = self.clients.read().await;
-        let others: Vec<String> = clients
-            .keys()
-            .filter(|k| k.as_str() != env)
-            .cloned()
-            .collect();
-        drop(clients);
-
-        let mut affected = Vec::new();
+    pub async fn partition_env(
+        &self,
+        env: &str,
+    ) -> anyhow::Result<Vec<String>> {
+        let clusters = self.crm_manager.list_clusters().await;
+        let others: Vec<String> =
+            clusters.into_iter().filter(|k| k.as_str() != env).collect();
         for other in &others {
             self.partition_link(env, other).await?;
-            affected.push(other.clone());
         }
-        Ok(affected)
+        Ok(others)
     }
 
     /// Heal env to ALL other envs.
     pub async fn heal_env(&self, env: &str) -> anyhow::Result<Vec<String>> {
-        let clients = self.clients.read().await;
-        let others: Vec<String> = clients
-            .keys()
-            .filter(|k| k.as_str() != env)
-            .cloned()
-            .collect();
-        drop(clients);
-
-        let mut affected = Vec::new();
+        let clusters = self.crm_manager.list_clusters().await;
+        let others: Vec<String> =
+            clusters.into_iter().filter(|k| k.as_str() != env).collect();
         for other in &others {
             self.heal_link(env, other).await?;
-            affected.push(other.clone());
         }
-        Ok(affected)
+        Ok(others)
     }
 
     // ---------------------------------------------------------------
@@ -178,10 +142,7 @@ impl NetsimManager {
 
     /// Partition ALL links.
     pub async fn partition_all(&self) -> anyhow::Result<Vec<String>> {
-        let clients = self.clients.read().await;
-        let envs: Vec<String> = clients.keys().cloned().collect();
-        drop(clients);
-
+        let envs = self.crm_manager.list_clusters().await;
         for i in 0..envs.len() {
             for j in (i + 1)..envs.len() {
                 self.partition_link(&envs[i], &envs[j]).await?;
@@ -192,10 +153,7 @@ impl NetsimManager {
 
     /// Heal ALL links.
     pub async fn heal_all(&self) -> anyhow::Result<Vec<String>> {
-        let clients = self.clients.read().await;
-        let envs: Vec<String> = clients.keys().cloned().collect();
-        drop(clients);
-
+        let envs = self.crm_manager.list_clusters().await;
         for i in 0..envs.len() {
             for j in (i + 1)..envs.len() {
                 self.heal_link(&envs[i], &envs[j]).await?;
@@ -208,19 +166,27 @@ impl NetsimManager {
     // Query
     // ---------------------------------------------------------------
 
-    /// Get network state from all routers.
-    pub async fn get_network_state(&self) -> anyhow::Result<(Vec<String>, Vec<LinkState>)> {
-        let clients = self.clients.read().await;
-        let envs: Vec<String> = clients.keys().cloned().collect();
+    /// Get network state from all CRMs/routers.
+    pub async fn get_network_state(
+        &self,
+    ) -> anyhow::Result<(Vec<String>, Vec<LinkState>)> {
+        let envs = self.crm_manager.list_clusters().await;
 
         let mut all_links: Vec<LinkState> = Vec::new();
-        for (env, client) in clients.iter() {
-            match client.call(&NetsimCommand::GetStatus).await {
+        for env in &envs {
+            match self.send_cmd(env, NetsimAction::GetStatus, "", 0).await {
                 Ok(resp) => {
-                    all_links.extend(resp.into_link_states());
+                    for link in resp.links {
+                        all_links.push(LinkState {
+                            env_a: resp.env_name.clone(),
+                            env_b: link.peer_env,
+                            connected: link.connected,
+                            latency_ms: link.latency_ms,
+                        });
+                    }
                 }
                 Err(e) => {
-                    error!(env = %env, "ZRPC GetStatus failed: {e:?}");
+                    error!(env = %env, "netsim GetStatus failed: {e:?}");
                 }
             }
         }
@@ -235,13 +201,14 @@ impl NetsimManager {
             };
             seen.insert(key)
         });
-        all_links.sort_by(|a, b| (&a.env_a, &a.env_b).cmp(&(&b.env_a, &b.env_b)));
+        all_links
+            .sort_by(|a, b| (&a.env_a, &a.env_b).cmp(&(&b.env_a, &b.env_b)));
 
         Ok((envs, all_links))
     }
 
-    /// List known environment names.
+    /// List known environment names (= cluster names from CRM manager).
     pub async fn env_names(&self) -> Vec<String> {
-        self.clients.read().await.keys().cloned().collect()
+        self.crm_manager.list_clusters().await
     }
 }
