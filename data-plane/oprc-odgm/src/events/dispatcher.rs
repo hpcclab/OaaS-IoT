@@ -11,28 +11,47 @@ use tracing::{debug, info, warn};
 
 use super::{MutAction, MutationContext};
 use crate::events::TriggerProcessor;
-use crate::events::types::{EventContext, EventType, TriggerExecutionContext}; // internal types
+use crate::events::types::{EventContext, EventType, TriggerExecutionContext};
 use oprc_grpc::ObjectEvent;
 
-#[derive(Debug, Clone)]
-pub struct V2QueuedEvent {
-    pub seq: u64,
-    pub ctx: MutationContext,
-    pub summary: Option<V2Summary>,
+/// Serde helper: serialize `Option<Vec<u8>>` as base64 string, skip if None.
+mod base64_opt {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    use serde::Serializer;
+
+    pub fn serialize<S>(
+        data: &Option<Vec<u8>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match data {
+            Some(bytes) => serializer.serialize_str(&STANDARD.encode(bytes)),
+            None => serializer.serialize_none(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
-pub struct V2Summary {
+pub struct QueuedEvent {
+    pub seq: u64,
+    pub ctx: MutationContext,
+    pub summary: Option<EventSummary>,
+}
+
+#[derive(Debug, Clone)]
+pub struct EventSummary {
     pub changed_total: usize,
     pub emitted: usize,
     pub sample_remaining_keys: Vec<String>,
     pub version_after: u64,
 }
 
-pub struct V2Dispatcher {
+pub struct EventDispatcher {
     seq: AtomicU64,
-    tx: Sender<V2QueuedEvent>,
-    bcast: broadcast::Sender<V2QueuedEvent>,
+    tx: Sender<QueuedEvent>,
+    bcast: broadcast::Sender<QueuedEvent>,
     // Metrics (internal counters; exposed via getters)
     emitted_events: AtomicU64,
     emitted_create: AtomicU64,
@@ -46,15 +65,15 @@ pub struct V2Dispatcher {
     otel: Option<oprc_observability::OdgmEventMetrics>,
 }
 
-impl V2Dispatcher {
-    pub fn new(queue_bound: usize, bcast_bound: usize) -> Arc<Self> {
-        Self::new_with_processor(queue_bound, bcast_bound, None)
-    }
-
-    pub fn new_with_processor(
+impl EventDispatcher {
+    /// Create an event dispatcher with optional Zenoh session for event publication.
+    /// When `zenoh_session` is `Some`, each processed event is published to
+    /// `oprc/{cls}/{pid}/events/{oid}` with the specified locality.
+    pub fn new_with_zenoh(
         queue_bound: usize,
         bcast_bound: usize,
         trigger_processor: Option<Arc<TriggerProcessor>>,
+        zenoh_session: Option<(zenoh::Session, zenoh::sample::Locality)>,
     ) -> Arc<Self> {
         let (tx, rx) = mpsc::channel(queue_bound);
         let (btx, _brx) = broadcast::channel(bcast_bound);
@@ -74,7 +93,12 @@ impl V2Dispatcher {
             trigger_processor,
             otel,
         });
-        tokio::spawn(run_v2_consumer(rx, dispatcher.clone(), btx));
+        tokio::spawn(run_event_consumer(
+            rx,
+            dispatcher.clone(),
+            btx,
+            zenoh_session,
+        ));
         dispatcher
     }
 
@@ -83,7 +107,7 @@ impl V2Dispatcher {
     }
 
     pub fn try_send(&self, ctx: MutationContext) -> bool {
-        let evt = V2QueuedEvent {
+        let evt = QueuedEvent {
             seq: self.next_seq(),
             ctx,
             summary: None,
@@ -101,17 +125,17 @@ impl V2Dispatcher {
                 if let Some(m) = &self.otel {
                     m.queue_drops_total.add(1, &[]);
                 }
-                debug!("v2 event queue full; dropping context");
+                debug!("event queue full; dropping context");
                 false
             }
             Err(TrySendError::Closed(_)) => {
-                warn!("v2 event queue closed; dropping context");
+                warn!("event queue closed; dropping context");
                 false
             }
         }
     }
 
-    pub fn subscribe(&self) -> broadcast::Receiver<V2QueuedEvent> {
+    pub fn subscribe(&self) -> broadcast::Receiver<QueuedEvent> {
         self.bcast.subscribe()
     }
 
@@ -145,15 +169,20 @@ impl V2Dispatcher {
     }
 }
 
-async fn run_v2_consumer(
-    mut rx: mpsc::Receiver<V2QueuedEvent>,
-    dispatcher: Arc<V2Dispatcher>,
-    bcast: broadcast::Sender<V2QueuedEvent>,
+async fn run_event_consumer(
+    mut rx: mpsc::Receiver<QueuedEvent>,
+    dispatcher: Arc<EventDispatcher>,
+    bcast: broadcast::Sender<QueuedEvent>,
+    zenoh_session: Option<(zenoh::Session, zenoh::sample::Locality)>,
 ) {
     let fanout_cap: usize = std::env::var("ODGM_MAX_BATCH_TRIGGER_FANOUT")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(256);
+    let sample_limit: usize = std::env::var("ODGM_EVENT_SUMMARY_KEY_SAMPLE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(32);
     while let Some(mut evt) = rx.recv().await {
         let changed_len = evt.ctx.changed.len();
         let mut emitted = 0usize;
@@ -163,20 +192,17 @@ async fn run_v2_consumer(
             }
             emitted += 1;
             dispatcher.emitted_events.fetch_add(1, Ordering::Relaxed);
-            // Basic trigger resolution skeleton (J2.4): derive prospective EventType for this changed key.
-            // We don't yet have object-level ObjectEvent configuration wired for filtering; that will follow.
             let prospective_event_type = map_changed_key_to_event_type(ck);
-            // Attempt trigger filtering + emission if trigger processor is configured and we can resolve targets.
             if let Some(tp) = &dispatcher.trigger_processor {
                 if let Some(object_event) = evt.ctx.event_config.as_ref() {
                     let targets = collect_matching_triggers_inline(
-                        &object_event,
+                        object_event,
                         &prospective_event_type,
                     );
                     if targets.is_empty() {
-                        debug!(seq = evt.seq, cls = %evt.ctx.cls_id, partition = evt.ctx.partition_id, obj = %evt.ctx.object_id, key = %ck.key_canonical, evt_type = ?prospective_event_type, "v2 no triggers matched for key");
+                        debug!(seq = evt.seq, cls = %evt.ctx.cls_id, partition = evt.ctx.partition_id, obj = %evt.ctx.object_id, key = %ck.key_canonical, evt_type = ?prospective_event_type, "no triggers matched for key");
                     } else {
-                        debug!(seq = evt.seq, cls = %evt.ctx.cls_id, partition = evt.ctx.partition_id, obj = %evt.ctx.object_id, key = %ck.key_canonical, evt_type = ?prospective_event_type, triggers = targets.len(), "v2 matched triggers");
+                        debug!(seq = evt.seq, cls = %evt.ctx.cls_id, partition = evt.ctx.partition_id, obj = %evt.ctx.object_id, key = %ck.key_canonical, evt_type = ?prospective_event_type, triggers = targets.len(), "matched triggers");
                         // Build EventContext (no payload/error for data changes).
                         let event_ctx = EventContext {
                             object_id: evt.ctx.object_id.clone(),
@@ -191,42 +217,42 @@ async fn run_v2_consumer(
                                 target,
                             };
                             tp.execute_trigger(exec_ctx).await; // fire & forget (async inside)
-                            // Increment type-specific emitted counters
-                            use EventType::*;
-                            match prospective_event_type {
-                                DataCreate(_) => {
-                                    dispatcher
-                                        .emitted_create
-                                        .fetch_add(1, Ordering::Relaxed);
-                                    if let Some(m) = &dispatcher.otel {
-                                        m.emitted_create_total.add(1, &[]);
-                                    }
+                        }
+                        // Increment type-specific emitted counters once per key (not per target)
+                        use EventType::*;
+                        match prospective_event_type {
+                            DataCreate(_) => {
+                                dispatcher
+                                    .emitted_create
+                                    .fetch_add(1, Ordering::Relaxed);
+                                if let Some(m) = &dispatcher.otel {
+                                    m.emitted_create_total.add(1, &[]);
                                 }
-                                DataUpdate(_) => {
-                                    dispatcher
-                                        .emitted_update
-                                        .fetch_add(1, Ordering::Relaxed);
-                                    if let Some(m) = &dispatcher.otel {
-                                        m.emitted_update_total.add(1, &[]);
-                                    }
-                                }
-                                DataDelete(_) => {
-                                    dispatcher
-                                        .emitted_delete
-                                        .fetch_add(1, Ordering::Relaxed);
-                                    if let Some(m) = &dispatcher.otel {
-                                        m.emitted_delete_total.add(1, &[]);
-                                    }
-                                }
-                                FunctionComplete(_) | FunctionError(_) => {}
                             }
+                            DataUpdate(_) => {
+                                dispatcher
+                                    .emitted_update
+                                    .fetch_add(1, Ordering::Relaxed);
+                                if let Some(m) = &dispatcher.otel {
+                                    m.emitted_update_total.add(1, &[]);
+                                }
+                            }
+                            DataDelete(_) => {
+                                dispatcher
+                                    .emitted_delete
+                                    .fetch_add(1, Ordering::Relaxed);
+                                if let Some(m) = &dispatcher.otel {
+                                    m.emitted_delete_total.add(1, &[]);
+                                }
+                            }
+                            FunctionComplete(_) | FunctionError(_) => {}
                         }
                     }
                 } else {
-                    debug!(seq = evt.seq, cls = %evt.ctx.cls_id, partition = evt.ctx.partition_id, obj = %evt.ctx.object_id, key = %ck.key_canonical, evt_type = ?prospective_event_type, "v2 object event config unavailable (skip triggers)");
+                    debug!(seq = evt.seq, cls = %evt.ctx.cls_id, partition = evt.ctx.partition_id, obj = %evt.ctx.object_id, key = %ck.key_canonical, evt_type = ?prospective_event_type, "object event config unavailable (skip triggers)");
                 }
             } else {
-                debug!(seq = evt.seq, cls = %evt.ctx.cls_id, partition = evt.ctx.partition_id, obj = %evt.ctx.object_id, version_after = evt.ctx.version_after, action = ?ck.action, key = %ck.key_canonical, evt_type = ?prospective_event_type, "v2 per-entry change (no trigger processor)");
+                debug!(seq = evt.seq, cls = %evt.ctx.cls_id, partition = evt.ctx.partition_id, obj = %evt.ctx.object_id, version_after = evt.ctx.version_after, action = ?ck.action, key = %ck.key_canonical, evt_type = ?prospective_event_type, "per-entry change (no trigger processor)");
             }
         }
         if emitted < changed_len {
@@ -234,11 +260,6 @@ async fn run_v2_consumer(
             if let Some(m) = &dispatcher.otel {
                 m.fanout_limited_total.add(1, &[]);
             }
-            // Summary fallback (log only for now)
-            let sample_limit = std::env::var("ODGM_EVENT_SUMMARY_KEY_SAMPLE")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(32);
             let sample: Vec<&str> = evt
                 .ctx
                 .changed
@@ -247,9 +268,8 @@ async fn run_v2_consumer(
                 .take(sample_limit)
                 .map(|c| c.key_canonical.as_str())
                 .collect();
-            info!(seq = evt.seq, cls = %evt.ctx.cls_id, partition = evt.ctx.partition_id, obj = %evt.ctx.object_id, version_after = evt.ctx.version_after, emitted = emitted, changed_total = changed_len, sample_remaining_keys = %sample.join(","), "v2 summary fallback (fanout truncated)");
-            // Attach structured summary to event for in-process consumers/tests
-            evt.summary = Some(V2Summary {
+            info!(seq = evt.seq, cls = %evt.ctx.cls_id, partition = evt.ctx.partition_id, obj = %evt.ctx.object_id, version_after = evt.ctx.version_after, emitted = emitted, changed_total = changed_len, sample_remaining_keys = %sample.join(","), "event summary fallback (fanout truncated)");
+            evt.summary = Some(EventSummary {
                 changed_total: changed_len,
                 emitted,
                 sample_remaining_keys: sample
@@ -259,23 +279,30 @@ async fn run_v2_consumer(
                 version_after: evt.ctx.version_after,
             });
         }
+        // Publish event to Zenoh for Gateway WebSocket bridge
+        if let Some((ref z_session, locality)) = zenoh_session {
+            let payload = ZenohEventPayload::from_queued_event(&evt);
+            if let Ok(json) = serde_json::to_vec(&payload) {
+                let topic = format!(
+                    "oprc/{}/{}/events/{}",
+                    evt.ctx.cls_id, evt.ctx.partition_id, evt.ctx.object_id
+                );
+                debug!(seq = evt.seq, topic = %topic, locality = ?locality, "publishing event to Zenoh");
+                let _ = z_session
+                    .put(&topic, json)
+                    .allowed_destination(locality)
+                    .await;
+            }
+        }
         let _ = bcast.send(evt);
         // Decrement queue length after processing one event
-        dispatcher
-            .queue_len
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
-                Some(v.saturating_sub(1))
-            })
-            .ok();
+        dispatcher.queue_len.fetch_sub(1, Ordering::Relaxed);
         if let Some(m) = &dispatcher.otel {
             m.queue_len.add(-1, &[]);
         }
     }
 }
 
-// Map a changed key + action into an internal EventType variant (numeric vs string).
-// This is a lightweight helper for the trigger resolution skeleton; actual trigger filtering will
-// use this mapping plus object-level ObjectEvent config in a subsequent patch.
 fn map_changed_key_to_event_type(ck: &super::ChangedKey) -> EventType {
     match ck.action {
         MutAction::Create => EventType::DataCreate(ck.key_canonical.clone()),
@@ -284,7 +311,6 @@ fn map_changed_key_to_event_type(ck: &super::ChangedKey) -> EventType {
     }
 }
 
-// Inline adaptation of legacy collect_matching_triggers for per-entry EventType.
 fn collect_matching_triggers_inline(
     object_event: &ObjectEvent,
     event_type: &EventType,
@@ -306,11 +332,60 @@ fn collect_matching_triggers_inline(
             .get(key)
             .map(|t| t.on_delete.clone())
             .unwrap_or_default(),
-        // FunctionComplete / FunctionError not expected in per-entry path here.
         FunctionComplete(_) | FunctionError(_) => Vec::new(),
     }
 }
 
-// Placeholder loader for ObjectEvent configuration until granular persistence wiring is added.
+/// Lightweight JSON payload published to Zenoh for co-located Gateway consumption.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ZenohEventPayload {
+    pub object_id: String,
+    pub cls_id: String,
+    pub partition_id: u16,
+    pub source: String,
+    pub version: u64,
+    pub changes: Vec<ZenohChangedEntry>,
+}
 
-pub type V2DispatcherRef = Arc<V2Dispatcher>;
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ZenohChangedEntry {
+    pub key: String,
+    pub action: String,
+    /// Raw entry value bytes, base64-encoded via serde.
+    /// Present only for create/update when the collection option
+    /// `ws_event_include_values` is `"true"`.
+    #[serde(with = "base64_opt", skip_serializing_if = "Option::is_none")]
+    pub value: Option<Vec<u8>>,
+}
+
+impl ZenohEventPayload {
+    pub fn from_queued_event(evt: &QueuedEvent) -> Self {
+        let source = match evt.ctx.source {
+            super::MutationSource::Local => "local",
+            super::MutationSource::Sync => "sync",
+        };
+        Self {
+            object_id: evt.ctx.object_id.clone(),
+            cls_id: evt.ctx.cls_id.clone(),
+            partition_id: evt.ctx.partition_id,
+            source: source.to_string(),
+            version: evt.ctx.version_after,
+            changes: evt
+                .ctx
+                .changed
+                .iter()
+                .map(|ck| ZenohChangedEntry {
+                    key: ck.key_canonical.clone(),
+                    action: match ck.action {
+                        MutAction::Create => "create".to_string(),
+                        MutAction::Update => "update".to_string(),
+                        MutAction::Delete => "delete".to_string(),
+                    },
+                    value: ck.value.clone(),
+                })
+                .collect(),
+        }
+    }
+}
+
+pub type EventDispatcherRef = Arc<EventDispatcher>;

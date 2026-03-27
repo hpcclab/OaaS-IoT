@@ -90,13 +90,12 @@ pub async fn run_controller(client: Client) -> anyhow::Result<()> {
 
     // Knative discovery
     let mut have_knative = false;
-    if cfg.features.knative {
-        if let Ok(discovery) = Discovery::new(client.clone()).run().await {
+    if cfg.features.knative
+        && let Ok(discovery) = Discovery::new(client.clone()).run().await {
             have_knative = discovery
                 .groups()
                 .any(|g| g.name() == "serving.knative.dev");
         }
-    }
     let include_knative = have_knative && cfg.features.knative;
     debug!(include_knative, profile = %cfg.profile, "controller init");
 

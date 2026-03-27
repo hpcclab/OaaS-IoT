@@ -470,6 +470,43 @@ async fn main() -> Result<()> {
         );
     }
 
+    // 8. WebSocket Event Subscription E2E Test
+    let ws_enabled =
+        std::env::var("OAAS_E2E_WS_ENABLED").unwrap_or_default() == "true";
+    if ws_enabled {
+        info!("Running WebSocket event subscription E2E test...");
+        let t = Instant::now();
+        match run_ws_e2e_test(&cli).await {
+            Ok(()) => {
+                summary.record(
+                    "WebSocket event subscription",
+                    TestStatus::Passed,
+                    t.elapsed(),
+                    None,
+                );
+            }
+            Err(e) => {
+                summary.record(
+                    "WebSocket event subscription",
+                    TestStatus::Failed,
+                    t.elapsed(),
+                    Some(e.to_string()),
+                );
+                error!("WebSocket E2E failed: {}", e);
+            }
+        }
+    } else {
+        info!(
+            "Skipping WebSocket E2E test (OAAS_E2E_WS_ENABLED not set to true)"
+        );
+        summary.record(
+            "WebSocket event subscription",
+            TestStatus::Skipped,
+            Duration::ZERO,
+            Some("OAAS_E2E_WS_ENABLED not set".into()),
+        );
+    }
+
     summary.print();
 
     if summary.has_failures() {
@@ -605,7 +642,7 @@ async fn run_ts_scripting_e2e_test(
 
     // Read TypeScript source
     let ts_source =
-        std::fs::read_to_string("tests/wasm-guest-ts-counter/counter.ts")
+        std::fs::read_to_string("tests/wasm-guest-ts-counter/src/index.ts")
             .context("Failed to read TypeScript counter source")?;
 
     let client = reqwest::Client::new();
@@ -801,6 +838,163 @@ async fn run_ts_scripting_e2e_test(
     }
 
     info!("TypeScript Scripting E2E Tests Passed!");
+    Ok(())
+}
+
+/// Run the WebSocket event subscription E2E scenario.
+///
+/// Requires:
+/// - Gateway deployed with `GATEWAY_WS_ENABLED=true`
+/// - ODGM deployed with `ODGM_ZENOH_EVENT_PUBLISH=true`
+/// - The basic E2E package already deployed (e2e-test.E2EClass)
+///
+/// Tests:
+/// 1. Object-level WS: subscribe to one object, mutate it, verify event received
+/// 2. Class-level WS: subscribe to all objects, mutate two different objects, verify both events
+async fn run_ws_e2e_test(cli: &OaasCli) -> Result<()> {
+    use futures_util::StreamExt;
+
+    let gateway_ws_base = "ws://localhost:30081";
+    let class = "e2e-test.E2EClass";
+    let partition = "0";
+
+    // ODGM Zenoh event publishing is configured via CRM Helm values
+    // (OPRC_CRM_TEMPLATES_ODGM_EXTRA_ENV includes ODGM_ZENOH_EVENT_PUBLISH=true)
+
+    // --- Test 1: Object-level WS subscription ---
+    info!("WS Test 1: Object-level subscription...");
+    let ws_obj_id = format!("ws-test-{}", nanoid::nanoid!(6));
+
+    // Seed object first so it exists
+    cli.object_set(class, partition, &ws_obj_id, "init", "1")?;
+    sleep(Duration::from_secs(1)).await;
+
+    let url = format!(
+        "{}/api/class/{}/{}/objects/{}/ws",
+        gateway_ws_base, class, partition, ws_obj_id
+    );
+    let (mut ws_stream, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .context("Failed to connect WS (object-level)")?;
+    info!("WS connected to {}", url);
+
+    // Give Zenoh subscriber time to propagate across the network
+    sleep(Duration::from_secs(2)).await;
+
+    // Mutate the object → should trigger an event (retry if first attempt misses)
+    let mut event_text = None;
+    for attempt in 0..3 {
+        if attempt > 0 {
+            info!("WS object event retry attempt {}", attempt + 1);
+            sleep(Duration::from_secs(2)).await;
+        }
+        cli.object_set(
+            class,
+            partition,
+            &ws_obj_id,
+            "ws_key",
+            &format!("ws_value_{}", attempt),
+        )?;
+
+        match tokio::time::timeout(Duration::from_secs(10), ws_stream.next())
+            .await
+        {
+            Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Text(t)))) => {
+                event_text = Some(t.to_string());
+                break;
+            }
+            Ok(Some(Ok(_))) => continue, // skip non-text frames
+            Ok(Some(Err(e))) => {
+                return Err(anyhow::anyhow!("WS error: {}", e));
+            }
+            Ok(None) => {
+                return Err(anyhow::anyhow!("WS stream closed unexpectedly"));
+            }
+            Err(_) => {
+                info!("WS object event timeout on attempt {}", attempt + 1);
+                continue;
+            }
+        }
+    }
+    let text =
+        event_text.context("WS object event not received after retries")?;
+    info!("WS object event received: {}", text);
+    // ODGM lowercases object IDs, so compare case-insensitively
+    if !text.to_lowercase().contains(&ws_obj_id.to_lowercase()) {
+        return Err(anyhow::anyhow!(
+            "WS event missing object_id '{}': {}",
+            ws_obj_id,
+            text
+        ));
+    }
+
+    // Close first WS
+    drop(ws_stream);
+    info!("WS Test 1 passed: object-level subscription works");
+
+    // --- Test 2: Class-level WS subscription ---
+    info!("WS Test 2: Class-level subscription...");
+    let ws_obj_a = format!("ws-cls-a-{}", nanoid::nanoid!(6));
+    let ws_obj_b = format!("ws-cls-b-{}", nanoid::nanoid!(6));
+
+    // Seed objects
+    cli.object_set(class, partition, &ws_obj_a, "init", "1")?;
+    cli.object_set(class, partition, &ws_obj_b, "init", "1")?;
+    sleep(Duration::from_secs(1)).await;
+
+    let url = format!("{}/api/class/{}/ws", gateway_ws_base, class);
+    let (mut ws_stream, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .context("Failed to connect WS (class-level)")?;
+    info!("WS connected to {}", url);
+
+    // Give Zenoh subscriber time to propagate across the network
+    sleep(Duration::from_secs(2)).await;
+
+    // Mutate both objects
+    cli.object_set(class, partition, &ws_obj_a, "k", "v1")?;
+    cli.object_set(class, partition, &ws_obj_b, "k", "v2")?;
+
+    // Collect 2 events (with timeout)
+    let mut received = Vec::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    while received.len() < 2 {
+        match tokio::time::timeout_at(deadline, ws_stream.next()).await {
+            Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Text(t)))) => {
+                info!("WS class event: {}", t);
+                received.push(t.to_string());
+            }
+            Ok(Some(Ok(_))) => continue, // skip non-text frames
+            Ok(Some(Err(e))) => {
+                return Err(anyhow::anyhow!("WS error: {}", e));
+            }
+            Ok(None) => {
+                return Err(anyhow::anyhow!("WS stream closed unexpectedly"));
+            }
+            Err(_) => break, // timeout
+        }
+    }
+
+    if received.len() < 2 {
+        return Err(anyhow::anyhow!(
+            "Expected 2 class-level events, got {}",
+            received.len()
+        ));
+    }
+    let combined = received.join(" ").to_lowercase();
+    if !combined.contains(&ws_obj_a.to_lowercase())
+        || !combined.contains(&ws_obj_b.to_lowercase())
+    {
+        return Err(anyhow::anyhow!(
+            "Class-level WS missing events for both objects: {}",
+            combined
+        ));
+    }
+
+    drop(ws_stream);
+    info!("WS Test 2 passed: class-level subscription works");
+
+    info!("WebSocket E2E Tests Passed!");
     Ok(())
 }
 

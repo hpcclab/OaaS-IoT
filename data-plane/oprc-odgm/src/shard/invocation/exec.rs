@@ -116,11 +116,10 @@ impl<E: EventManager + Send + Sync + 'static> InvocationOffloader<E> {
         req: InvocationRequest,
     ) -> Result<InvocationResponse, OffloadError> {
         // Dispatch to local WASM offloader when the route is wasm://
-        if self.is_wasm_fn(&req.fn_id) {
-            if let Some(local) = self.local_offloader.get() {
+        if self.is_wasm_fn(&req.fn_id)
+            && let Some(local) = self.local_offloader.get() {
                 return local.invoke_fn(req).await;
             }
-        }
         let mut conn = self.conn_manager.get(req.fn_id.clone()).await?;
         let mut req = tonic::Request::new(req);
         req.set_timeout(Duration::from_secs(300));
@@ -137,11 +136,10 @@ impl<E: EventManager + Send + Sync + 'static> InvocationOffloader<E> {
         req: ObjectInvocationRequest,
     ) -> Result<InvocationResponse, OffloadError> {
         // Dispatch to local WASM offloader when the route is wasm://
-        if self.is_wasm_fn(&req.fn_id) {
-            if let Some(local) = self.local_offloader.get() {
+        if self.is_wasm_fn(&req.fn_id)
+            && let Some(local) = self.local_offloader.get() {
                 return local.invoke_obj(req).await;
             }
-        }
         let object_id_opt = req.object_id.clone();
         let fn_id = req.fn_id.clone();
         let partition_id = req.partition_id;

@@ -4,11 +4,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+/// Key used by the real ODGM to store the whole-object blob as a granular entry.
+const RAW_ENTRY_KEY: &str = "_raw";
+
 #[derive(Default, Clone)]
 pub struct MockDataOps {
-    // collection -> object_id -> data  (whole-object storage)
-    objects: Arc<RwLock<HashMap<String, HashMap<String, Vec<u8>>>>>,
     // (collection, object_id) -> (key -> data)  (granular per-field storage)
+    // Whole-object get/set use the "_raw" key, matching real ODGM behaviour.
     entries: Arc<RwLock<HashMap<(String, String), HashMap<String, Vec<u8>>>>>,
 }
 
@@ -20,9 +22,10 @@ impl OdgmDataOps for MockDataOps {
         _part: u32,
         obj_id: &str,
     ) -> Result<Option<Vec<u8>>, DataOpsError> {
-        let guard = self.objects.read().await;
-        if let Some(col) = guard.get(cls_id) {
-            Ok(col.get(obj_id).cloned())
+        let guard = self.entries.read().await;
+        let k = (cls_id.to_string(), obj_id.to_string());
+        if let Some(fields) = guard.get(&k) {
+            Ok(fields.get(RAW_ENTRY_KEY).cloned())
         } else {
             Ok(None)
         }
@@ -35,9 +38,10 @@ impl OdgmDataOps for MockDataOps {
         obj_id: &str,
         data: Vec<u8>,
     ) -> Result<(), DataOpsError> {
-        let mut guard = self.objects.write().await;
-        let col = guard.entry(cls_id.to_string()).or_default();
-        col.insert(obj_id.to_string(), data);
+        let mut guard = self.entries.write().await;
+        let k = (cls_id.to_string(), obj_id.to_string());
+        let fields = guard.entry(k).or_default();
+        fields.insert(RAW_ENTRY_KEY.to_string(), data);
         Ok(())
     }
 
@@ -47,13 +51,8 @@ impl OdgmDataOps for MockDataOps {
         _part: u32,
         obj_id: &str,
     ) -> Result<(), DataOpsError> {
-        let mut guard = self.objects.write().await;
-        if let Some(col) = guard.get_mut(cls_id) {
-            col.remove(obj_id);
-        }
-        // Also remove all granular entries
-        let mut entries = self.entries.write().await;
-        entries.remove(&(cls_id.to_string(), obj_id.to_string()));
+        let mut guard = self.entries.write().await;
+        guard.remove(&(cls_id.to_string(), obj_id.to_string()));
         Ok(())
     }
 
@@ -123,6 +122,38 @@ impl OdgmDataOps for MockDataOps {
     ) -> Result<Option<Vec<u8>>, DataOpsError> {
         Err(DataOpsError::Internal("Not implemented in mock".into()))
     }
+
+    async fn batch_set_values(
+        &self,
+        cls_id: &str,
+        _part: u32,
+        obj_id: &str,
+        entries: Vec<(String, Vec<u8>)>,
+    ) -> Result<(), DataOpsError> {
+        let mut guard = self.entries.write().await;
+        let k = (cls_id.to_string(), obj_id.to_string());
+        let fields = guard.entry(k).or_default();
+        for (key, val) in entries {
+            fields.insert(key, val);
+        }
+        Ok(())
+    }
+
+    async fn get_all_entries(
+        &self,
+        cls_id: &str,
+        _part: u32,
+        obj_id: &str,
+    ) -> Result<Option<Vec<(String, Vec<u8>)>>, DataOpsError> {
+        let guard = self.entries.read().await;
+        let k = (cls_id.to_string(), obj_id.to_string());
+        match guard.get(&k) {
+            Some(fields) => Ok(Some(
+                fields.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            )),
+            None => Ok(None),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -136,7 +167,9 @@ mod tests {
         assert!(mock.get_object("c", 0, "o").await.unwrap().is_none());
 
         // Set and get
-        mock.set_object("c", 0, "o", b"data".to_vec()).await.unwrap();
+        mock.set_object("c", 0, "o", b"data".to_vec())
+            .await
+            .unwrap();
         assert_eq!(
             mock.get_object("c", 0, "o").await.unwrap(),
             Some(b"data".to_vec())
@@ -155,7 +188,9 @@ mod tests {
         assert!(mock.get_value("c", 0, "o", "k").await.unwrap().is_none());
 
         // Set and get
-        mock.set_value("c", 0, "o", "k", b"v".to_vec()).await.unwrap();
+        mock.set_value("c", 0, "o", "k", b"v".to_vec())
+            .await
+            .unwrap();
         assert_eq!(
             mock.get_value("c", 0, "o", "k").await.unwrap(),
             Some(b"v".to_vec())
@@ -169,8 +204,12 @@ mod tests {
     #[tokio::test]
     async fn entries_independent_per_object() {
         let mock = MockDataOps::default();
-        mock.set_value("c", 0, "o1", "k", b"v1".to_vec()).await.unwrap();
-        mock.set_value("c", 0, "o2", "k", b"v2".to_vec()).await.unwrap();
+        mock.set_value("c", 0, "o1", "k", b"v1".to_vec())
+            .await
+            .unwrap();
+        mock.set_value("c", 0, "o2", "k", b"v2".to_vec())
+            .await
+            .unwrap();
 
         assert_eq!(
             mock.get_value("c", 0, "o1", "k").await.unwrap(),
@@ -185,9 +224,15 @@ mod tests {
     #[tokio::test]
     async fn multiple_keys_per_object() {
         let mock = MockDataOps::default();
-        mock.set_value("c", 0, "o", "a", b"1".to_vec()).await.unwrap();
-        mock.set_value("c", 0, "o", "b", b"2".to_vec()).await.unwrap();
-        mock.set_value("c", 0, "o", "c_key", b"3".to_vec()).await.unwrap();
+        mock.set_value("c", 0, "o", "a", b"1".to_vec())
+            .await
+            .unwrap();
+        mock.set_value("c", 0, "o", "b", b"2".to_vec())
+            .await
+            .unwrap();
+        mock.set_value("c", 0, "o", "c_key", b"3".to_vec())
+            .await
+            .unwrap();
 
         assert_eq!(
             mock.get_value("c", 0, "o", "a").await.unwrap(),
@@ -206,7 +251,9 @@ mod tests {
     #[tokio::test]
     async fn delete_object_clears_entries() {
         let mock = MockDataOps::default();
-        mock.set_value("c", 0, "o", "k", b"v".to_vec()).await.unwrap();
+        mock.set_value("c", 0, "o", "k", b"v".to_vec())
+            .await
+            .unwrap();
         mock.set_object("c", 0, "o", b"obj-data".to_vec())
             .await
             .unwrap();
@@ -222,8 +269,12 @@ mod tests {
     #[tokio::test]
     async fn overwrite_entry_value() {
         let mock = MockDataOps::default();
-        mock.set_value("c", 0, "o", "k", b"first".to_vec()).await.unwrap();
-        mock.set_value("c", 0, "o", "k", b"second".to_vec()).await.unwrap();
+        mock.set_value("c", 0, "o", "k", b"first".to_vec())
+            .await
+            .unwrap();
+        mock.set_value("c", 0, "o", "k", b"second".to_vec())
+            .await
+            .unwrap();
         assert_eq!(
             mock.get_value("c", 0, "o", "k").await.unwrap(),
             Some(b"second".to_vec())
@@ -249,7 +300,9 @@ mod tests {
         let mock = MockDataOps::default();
         let clone = mock.clone();
 
-        mock.set_value("c", 0, "o", "k", b"v".to_vec()).await.unwrap();
+        mock.set_value("c", 0, "o", "k", b"v".to_vec())
+            .await
+            .unwrap();
         assert_eq!(
             clone.get_value("c", 0, "o", "k").await.unwrap(),
             Some(b"v".to_vec())

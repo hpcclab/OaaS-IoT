@@ -34,7 +34,7 @@ where
     }
 
     pub fn partition_id_u16(&self) -> u16 {
-        self.metadata.partition_id as u16
+        self.metadata.partition_id
     }
 
     /// Attach an in-process function executor (e.g. for local or WASM functions).
@@ -43,7 +43,9 @@ where
     /// before falling back to the remote gRPC offloader.
     pub fn with_local_offloader(
         self,
-        offloader: Arc<dyn oprc_invoke::handler::InvocationExecutor + Send + Sync>,
+        offloader: Arc<
+            dyn oprc_invoke::handler::InvocationExecutor + Send + Sync,
+        >,
     ) -> Self {
         let _ = self.local_offloader.set(offloader);
         self
@@ -54,15 +56,20 @@ where
     /// create the adapter (circular dependency solved via OnceLock).
     pub fn set_local_offloader(
         &self,
-        offloader: Arc<dyn oprc_invoke::handler::InvocationExecutor + Send + Sync>,
-    ) -> Result<(), Arc<dyn oprc_invoke::handler::InvocationExecutor + Send + Sync>> {
+        offloader: Arc<
+            dyn oprc_invoke::handler::InvocationExecutor + Send + Sync,
+        >,
+    ) -> Result<
+        (),
+        Arc<dyn oprc_invoke::handler::InvocationExecutor + Send + Sync>,
+    > {
         self.local_offloader.set(offloader)
     }
 
-    pub fn v2_subscribe(
+    pub fn subscribe_events(
         &self,
     ) -> Option<
-        tokio::sync::broadcast::Receiver<crate::events::v2::V2QueuedEvent>,
+        tokio::sync::broadcast::Receiver<crate::events::QueuedEvent>,
     > {
         self.v2_dispatcher.as_ref().map(|d| d.subscribe())
     }
@@ -124,10 +131,10 @@ where
             .await
             .map_err(ShardError::from)?;
         for (k, _) in chunk {
-            if let Some((obj_id, _)) = parse_granular_key(k.as_slice()) {
-                if obj_id == normalized_id {
-                    all.push(k.into_vec());
-                }
+            if let Some((obj_id, _)) = parse_granular_key(k.as_slice())
+                && obj_id == normalized_id
+            {
+                all.push(k.into_vec());
             }
         }
         // Drain remaining pages if any
@@ -139,10 +146,10 @@ where
                 .await
                 .map_err(ShardError::from)?;
             for (k, _) in chunk {
-                if let Some((obj_id, _)) = parse_granular_key(k.as_slice()) {
-                    if obj_id == normalized_id {
-                        all.push(k.into_vec());
-                    }
+                if let Some((obj_id, _)) = parse_granular_key(k.as_slice())
+                    && obj_id == normalized_id
+                {
+                    all.push(k.into_vec());
                 }
             }
             cursor = next;
@@ -160,8 +167,8 @@ where
         z_session: zenoh::Session,
         event_manager: Option<Arc<E>>,
         config: ShardOptions,
-        // Optionally pass V2 dispatcher
-        v2_dispatcher: Option<crate::events::V2DispatcherRef>,
+        // Optionally pass event dispatcher
+        v2_dispatcher: Option<crate::events::EventDispatcherRef>,
     ) -> Result<Self, ShardError> {
         debug!("Creating new full ObjectUnifiedShard");
         let config = Self::sanitize_config(config);
@@ -415,31 +422,32 @@ where
         self.set_metadata(&normalized_id, metadata).await?;
 
         // Emit V2 per-entry delete events (one per previously existing key)
-        if let Some(v2) = &self.v2_dispatcher {
-            if let Some(entry) = existing_entry {
-                // Collect changed keys from both numeric and string maps
-                let mut changed: Vec<ChangedKey> =
-                    Vec::with_capacity(entry.entries.len());
-                for (k, _v) in entry.entries.iter() {
-                    changed.push(ChangedKey {
-                        key_canonical: k.clone(),
-                        action: MutAction::Delete,
-                    });
-                }
-                if !changed.is_empty() {
-                    // Use pre-deletion event config so delete triggers can be evaluated
-                    let event_cfg = predelete_event_cfg.clone();
-                    let ctx = MutationContext::new(
-                        normalized_id.clone(),
-                        self.class_id().to_string(),
-                        self.partition_id_u16(),
-                        version_before,
-                        version_after,
-                        changed,
-                    )
-                    .with_event_config(event_cfg);
-                    v2.try_send(ctx);
-                }
+        if let Some(v2) = &self.v2_dispatcher
+            && let Some(entry) = existing_entry
+        {
+            // Collect changed keys from both numeric and string maps
+            let mut changed: Vec<ChangedKey> =
+                Vec::with_capacity(entry.entries.len());
+            for (k, _v) in entry.entries.iter() {
+                changed.push(ChangedKey {
+                    key_canonical: k.clone(),
+                    action: MutAction::Delete,
+                    value: None,
+                });
+            }
+            if !changed.is_empty() {
+                // Use pre-deletion event config so delete triggers can be evaluated
+                let event_cfg = predelete_event_cfg.clone();
+                let ctx = MutationContext::new(
+                    normalized_id.clone(),
+                    self.class_id().to_string(),
+                    self.partition_id_u16(),
+                    version_before,
+                    version_after,
+                    changed,
+                )
+                .with_event_config(event_cfg);
+                v2.try_send(ctx);
             }
         }
 
@@ -495,30 +503,31 @@ where
         self.set_metadata(normalized_id, metadata).await?;
 
         // Emit V2 events if dispatcher exists
-        if let Some(v2) = &self.v2_dispatcher {
-            if let Some(entry) = existing_entry {
-                let mut changed: Vec<ChangedKey> =
-                    Vec::with_capacity(entry.entries.len());
-                for (k, _v) in entry.entries.iter() {
-                    changed.push(ChangedKey {
-                        key_canonical: k.clone(),
-                        action: MutAction::Delete,
-                    });
-                }
-                if !changed.is_empty() {
-                    // Use pre-deletion event config so delete triggers can be evaluated
-                    let event_cfg = predelete_event_cfg.clone();
-                    let ctx = MutationContext::new(
-                        normalized_id.to_string(),
-                        self.class_id().to_string(),
-                        self.partition_id_u16(),
-                        version_before,
-                        version_after,
-                        changed,
-                    )
-                    .with_event_config(event_cfg);
-                    v2.try_send(ctx);
-                }
+        if let Some(v2) = &self.v2_dispatcher
+            && let Some(entry) = existing_entry
+        {
+            let mut changed: Vec<ChangedKey> =
+                Vec::with_capacity(entry.entries.len());
+            for (k, _v) in entry.entries.iter() {
+                changed.push(ChangedKey {
+                    key_canonical: k.clone(),
+                    action: MutAction::Delete,
+                    value: None,
+                });
+            }
+            if !changed.is_empty() {
+                // Use pre-deletion event config so delete triggers can be evaluated
+                let event_cfg = predelete_event_cfg.clone();
+                let ctx = MutationContext::new(
+                    normalized_id.to_string(),
+                    self.class_id().to_string(),
+                    self.partition_id_u16(),
+                    version_before,
+                    version_after,
+                    changed,
+                )
+                .with_event_config(event_cfg);
+                v2.try_send(ctx);
             }
         }
 
@@ -566,13 +575,13 @@ where
 
             match page.next_cursor {
                 Some(next_cursor) => {
-                    if let Some(current) = &cursor {
-                        if current == &next_cursor {
-                            return Err(ShardError::ConfigurationError(
+                    if let Some(current) = &cursor
+                        && current == &next_cursor
+                    {
+                        return Err(ShardError::ConfigurationError(
                                 "granular reconstruction encountered a stalled cursor"
                                     .into(),
                             ));
-                        }
                     }
                     cursor = Some(next_cursor);
                 }
@@ -700,20 +709,16 @@ where
                             info!("Shard {} readiness: {}", metadata.id, receiver.borrow().to_owned());
                         }
                         token = liveliness_sub.recv_async() => {
-                            match token {
-                                Ok(sample) => {
-                                    if let Some(liveliness) = &liveliness_state {
-                                        let id = liveliness.handle_sample(&sample).await;
-                                        info!("shard {}: liveliness {id:?} updated {sample:?}", metadata.id );
-                                        if id != Some(metadata.id) {
-                                            if let Some(inv_manager) = &inv_net_manager {
-                                                let mut inv = inv_manager.lock().await;
-                                                inv.on_liveliness_updated(liveliness).await;
-                                            }
+                            if let Ok(sample) = token {
+                                if let Some(liveliness) = &liveliness_state {
+                                    let id = liveliness.handle_sample(&sample).await;
+                                    info!("shard {}: liveliness {id:?} updated {sample:?}", metadata.id );
+                                    if id != Some(metadata.id)
+                                        && let Some(inv_manager) = &inv_net_manager {
+                                            let mut inv = inv_manager.lock().await;
+                                            inv.on_liveliness_updated(liveliness).await;
                                         }
-                                    }
-                                },
-                                Err(_) => {},
+                                }
                             };
                         }
                         _ = token.cancelled() => { break; }

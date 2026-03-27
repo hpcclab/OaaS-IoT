@@ -31,7 +31,10 @@ pub struct OClassDeployment {
     pub nfr_requirements: NfrRequirements,
     /// Per-environment template overrides. Key = environment/cluster name,
     /// Value = template name or alias. Highest precedence for that env.
-    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "std::collections::HashMap::is_empty"
+    )]
     pub env_templates: HashMap<String, String>,
     #[validate(nested)]
     #[serde(default)]
@@ -52,7 +55,9 @@ pub struct OClassDeployment {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Validate, JsonSchema)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Validate, JsonSchema,
+)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
 pub struct FunctionDeploymentSpec {
@@ -71,7 +76,10 @@ pub struct FunctionDeploymentSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provision_config: Option<crate::nfr::ProvisionConfig>,
     /// Arbitrary config key/value pairs from package metadata (injected as ENV to runtimes)
-    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "std::collections::HashMap::is_empty"
+    )]
     pub config: std::collections::HashMap<String, String>,
 }
 
@@ -100,6 +108,7 @@ impl Default for OClassDeployment {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
+#[derive(Default)]
 pub struct DeploymentFilter {
     pub package_name: Option<String>,
     pub class_key: Option<String>,
@@ -107,23 +116,32 @@ pub struct DeploymentFilter {
     pub condition: Option<DeploymentCondition>,
 }
 
-impl Default for DeploymentFilter {
-    fn default() -> Self {
-        Self {
-            package_name: None,
-            class_key: None,
-            target_env: None,
-            condition: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Validate, Default)]
+/// Concrete infrastructure configuration for a specific deployment instance.
+///
+/// This is the **per-deployment, low-level** counterpart to `OClass.options`:
+///
+/// | Scope | Field | Purpose |
+/// |---|---|---|
+/// | Class (`OClass.options`) | `zenoh_event_publish`, etc. | Semantic / behavioral — *what the class does* |
+/// | Deployment (`OdgmDataSpec`) | `partition_count`, `shard_type`, `log`, … | Concrete / infrastructure — *how it is deployed* |
+///
+/// Different deployments of the same class can have different `OdgmDataSpec`
+/// values (e.g., one env with `shard_type = "raft"` for strong consistency,
+/// another with `shard_type = "mst"` for eventual).
+///
+/// **`shard_type` note**: This field is intentionally low-level. In most cases
+/// users should express their intent via `OClassDeployment.nfr_requirements`
+/// (e.g., `consistency = STRONG`) and let the PM derive the appropriate shard
+/// type during deployment scheduling.
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Validate, Default,
+)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
 pub struct OdgmDataSpec {
     /// Logical ODGM collection names to materialize. A minimal CreateCollectionRequest will
     /// be generated per name with uniform partition/replica/shard settings.
+    /// Defaults to `["{package_name}.{class_key}"]` when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub collections: Vec<String>,
     /// Desired partition count per collection (>=1). Partitions drive parallelism and hash space.
@@ -132,18 +150,37 @@ pub struct OdgmDataSpec {
     /// Desired replica count per partition (>=1). PM selects based on availability NFRs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub replica_count: Option<u32>,
-    /// Shard implementation / consistency strategy (e.g. "mst", "raft").
+    /// Low-level shard implementation / consistency strategy (e.g. "mst", "raft").
+    /// Prefer using `OClass.state_spec.consistency_model`; the PM will derive this
+    /// automatically. Set explicitly only as an advanced override.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shard_type: Option<String>,
-    /// Mapping of environment (target_env) -> list of ODGM node ids assigned for that env
+    /// Mapping of environment (target_env) -> list of ODGM node ids assigned for that env.
+    /// Populated by the PM during deployment scheduling.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub env_node_ids: HashMap<String, Vec<u64>>,
-    /// Optional ODGM log env filter (maps to ODGM_LOG), e.g. "info,openraft=info,zenoh=warn"
+    /// Optional ODGM log env filter (maps to ODGM_LOG), e.g. "info,openraft=info,zenoh=warn".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub log: Option<String>,
+    /// Per-deployment shard behavior overrides. Keys here have higher precedence than
+    /// `OClass.options` and are merged on top at deployment time. Use this for
+    /// capacity/performance tuning that varies by environment:
+    /// - `batch_size` — operation batch size (default 1000)
+    /// - `timeout_ms` — operation timeout in ms (default 5000)
+    /// - `offload_max_pool_size` — max function invocation pool size (default 64)
+    /// - `pool_max_idle_lifetime` — pool idle timeout in ms (default 30000)
+    /// - `pool_max_lifetime` — pool connection refresh interval in ms (default 600000)
+    /// - `enable_metrics` — collect shard-level metrics (default "true")
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub options: HashMap<String, String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zenoh_mode: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default, JsonSchema)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Default, JsonSchema,
+)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
 pub struct DeploymentStatusSummary {

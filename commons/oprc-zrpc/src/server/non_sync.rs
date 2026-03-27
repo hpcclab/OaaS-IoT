@@ -39,7 +39,7 @@ where
             handler: self.handler.clone(),
             config: self.config.clone(),
             queryable: None,
-            _type: self._type.clone(),
+            _type: self._type,
         }
     }
 }
@@ -56,7 +56,7 @@ where
     ) -> Self {
         ZrpcNonSyncService {
             z_session,
-            handler: handler,
+            handler,
             config,
             queryable: None,
             _type: PhantomData,
@@ -163,16 +163,11 @@ where
         handler
     }
 
-    async fn write_output(out: C::Out, query: Query, conf: &ServerConfig) {
+    async fn write_output(out: C::Out, query: Query, _conf: &ServerConfig) {
         match C::OutSerde::to_zbyte(&out) {
             Ok(byte) => {
                 let reply_key = query.key_expr();
-                if let Err(e) = query
-                    .reply(reply_key, byte)
-                    .congestion_control(conf.reply_congestion)
-                    .priority(conf.reply_priority)
-                    .await
-                {
+                if let Err(e) = query.reply(reply_key, byte).await {
                     warn!(
                         "RPC server: error on replying '{}', {}",
                         query.key_expr(),
@@ -208,13 +203,12 @@ where
 
     #[inline]
     pub async fn close(&mut self) {
-        if let Some(queryable) = self.queryable.take() {
-            if let Err(err) = queryable.undeclare().await {
+        if let Some(queryable) = self.queryable.take()
+            && let Err(err) = queryable.undeclare().await {
                 error!(
                     "RPC server '{}': error on undeclare: {}",
                     self.config.service_id, err
                 );
             };
-        }
     }
 }

@@ -13,17 +13,14 @@ pub struct MetricsConfig {
 }
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum ScrapeKind {
     Service,
     Pod,
+    #[default]
     Auto,
 }
 
-impl Default for ScrapeKind {
-    fn default() -> Self {
-        ScrapeKind::Auto
-    }
-}
 
 #[derive(Clone)]
 pub struct PromOperatorProvider {

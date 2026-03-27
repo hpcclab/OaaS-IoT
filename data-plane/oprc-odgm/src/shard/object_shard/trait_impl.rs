@@ -171,11 +171,10 @@ where
             if let Some((oid_str, crate::granular_key::GranularRecord::Metadata)) =
                 crate::granular_key::parse_granular_key(k.as_slice())
             {
-                if let Some(pref) = prefix {
-                    if !oid_str.starts_with(pref) {
+                if let Some(pref) = prefix
+                    && !oid_str.starts_with(pref) {
                         continue;
                     }
-                }
                 if let Some(entry) = self
                     .reconstruct_object_from_entries(
                         &oid_str,

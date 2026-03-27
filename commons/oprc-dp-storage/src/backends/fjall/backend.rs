@@ -347,9 +347,7 @@ impl StorageBackend for FjallStorage {
     ) -> StorageResult<Option<(StorageValue, StorageValue)>> {
         let result = self
             .keyspace
-            .iter()
-            .rev()
-            .next()
+            .iter().next_back()
             .map(|guard| {
                 let (k, v) = guard.into_inner().map_err(Self::convert_error)?;
                 Ok::<(StorageValue, StorageValue), StorageError>((
@@ -457,12 +455,11 @@ impl crate::ApplicationDataStorage for FjallStorage {
             let (key, value) =
                 guard.into_inner().map_err(Self::convert_error)?;
 
-            if let Some(max) = limit {
-                if results.len() >= max {
+            if let Some(max) = limit
+                && results.len() >= max {
                     next_key = Some(StorageValue::from_slice(key.as_ref()));
                     break;
                 }
-            }
 
             results.push((
                 StorageValue::from_slice(key.as_ref()),

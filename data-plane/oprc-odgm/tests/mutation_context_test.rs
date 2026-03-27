@@ -6,9 +6,7 @@ use oprc_odgm::replication::no_replication::NoReplication;
 use oprc_odgm::shard::ObjectVal;
 use oprc_odgm::shard::ShardOptions;
 use oprc_odgm::shard::traits::ShardMetadata;
-use oprc_odgm::shard::{
-    ObjectUnifiedShard, ShardBuilder, ShardError,
-};
+use oprc_odgm::shard::{ObjectUnifiedShard, ShardBuilder, ShardError};
 
 type TestShard = ObjectUnifiedShard<
     AnyStorage,
@@ -41,7 +39,7 @@ fn val(d: &str) -> ObjectVal {
 }
 
 async fn make_shard() -> Result<TestShard, ShardError> {
-    unsafe { std::env::set_var("ODGM_EVENT_PIPELINE_V2", "true") };
+    unsafe { std::env::set_var("ODGM_EVENT_PIPELINE_ENABLED", "true") };
     let z_conf = oprc_zenoh::OprcZenohConfig::init_from_env().unwrap();
     let pool = oprc_zenoh::pool::Pool::new(1, z_conf);
     let session = pool.get_session().await.map_err(|e| {

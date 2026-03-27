@@ -221,7 +221,7 @@ describe("POST /compile — body limit", () => {
   });
 
   it("accepts the E2E counter source at default 1 MB limit", async () => {
-    // This is the exact source from tests/wasm-guest-ts-counter/counter.ts
+    // This is the exact source from tests/wasm-guest-ts-counter/src/index.ts
     // It must compile without hitting the body limit.
     const counterSource = `
 import { service, method, OaaSObject, OaaSError } from "@oaas/sdk";

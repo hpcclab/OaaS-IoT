@@ -67,6 +67,8 @@ pub struct RenderContext<'a> {
     pub odgm_image_override: Option<&'a str>,
     /// Optional override for ODGM sidecar imagePullPolicy (Always|IfNotPresent|Never)
     pub odgm_pull_policy_override: Option<&'a str>,
+    /// Extra environment variables to inject into ODGM containers (comma-separated KEY=VALUE)
+    pub odgm_extra_env: Option<&'a str>,
     /// Optional in-namespace Zenoh router Service name and port discovered by the controller.
     /// When present, templates should wire OPRC_ZENOH_* envs accordingly.
     pub router_service_name: Option<String>,
@@ -307,12 +309,12 @@ impl TemplateManager {
     pub fn new(include_knative: bool) -> Self {
         // Minimal built-ins
         let mut templates: Vec<Box<dyn Template + Send + Sync>> = vec![
-            Box::new(DevTemplate::default()),
-            Box::new(EdgeTemplate::default()),
-            Box::new(K8sDeploymentTemplate::default()),
+            Box::new(DevTemplate),
+            Box::new(EdgeTemplate),
+            Box::new(K8sDeploymentTemplate),
         ];
         if include_knative {
-            templates.push(Box::new(KnativeTemplate::default()));
+            templates.push(Box::new(KnativeTemplate));
         }
         Self { templates }
     }
@@ -326,7 +328,7 @@ impl TemplateManager {
         if let Some(h) = spec.selected_template.as_deref() {
             let mut matched = None;
             for t in &self.templates {
-                if t.name() == h || t.aliases().iter().any(|a| *a == h) {
+                if t.name() == h || t.aliases().contains(&h) {
                     matched = Some(&**t);
                     break;
                 }
@@ -628,11 +630,10 @@ impl TemplateManager {
                     let mut dedup: Vec<EnvVar> = Vec::with_capacity(env.len());
                     let mut last_name: Option<String> = None;
                     for e in env.into_iter() {
-                        if let Some(prev) = last_name.as_ref() {
-                            if prev == &e.name {
+                        if let Some(prev) = last_name.as_ref()
+                            && prev == &e.name {
                                 continue;
                             }
-                        }
                         last_name = Some(e.name.clone());
                         dedup.push(e);
                     }
@@ -763,6 +764,7 @@ impl TemplateManager {
                 routes.entry(default_method).or_insert(FunctionRoute {
                     url: format!("wasm://{}", f.function_key),
                     wasm_module_url: Some(module_url.clone()),
+                    wasm_fuel: None,
                     stateless: Some(true),
                     standby: None,
                     active_group: Vec::new(),
@@ -779,6 +781,7 @@ impl TemplateManager {
                 routes.entry(default_method).or_insert(FunctionRoute {
                     url,
                     wasm_module_url: None,
+                    wasm_fuel: None,
                     stateless: Some(true),
                     standby: None,
                     active_group: Vec::new(),
@@ -873,6 +876,7 @@ mod tests {
             profile: "full",
             odgm_image_override: None,
             odgm_pull_policy_override: None,
+            odgm_extra_env: None,
             router_service_name: None,
             router_service_port: None,
             telemetry: ResolvedTelemetry::disabled(),
@@ -942,6 +946,7 @@ mod tests {
             profile: "dev",
             odgm_image_override: None,
             odgm_pull_policy_override: None,
+            odgm_extra_env: None,
             router_service_name: None,
             router_service_port: None,
             telemetry: ResolvedTelemetry::disabled(),
@@ -982,6 +987,7 @@ mod tests {
             profile: "dev",
             odgm_image_override: None,
             odgm_pull_policy_override: None,
+            odgm_extra_env: None,
             router_service_name: None,
             router_service_port: None,
             telemetry: ResolvedTelemetry::disabled(),
@@ -1051,6 +1057,7 @@ mod tests {
             profile: "dev",
             odgm_image_override: None,
             odgm_pull_policy_override: None,
+            odgm_extra_env: None,
             router_service_name: None,
             router_service_port: None,
             telemetry: ResolvedTelemetry::disabled(),
@@ -1148,6 +1155,7 @@ mod tests {
             FunctionRoute {
                 url: "http://custom-a:9000/".into(),
                 wasm_module_url: None,
+                wasm_fuel: None,
                 stateless: Some(false), // user overrides default
                 standby: Some(true),
                 active_group: vec![1, 2],
@@ -1175,6 +1183,7 @@ mod tests {
             profile: "dev",
             odgm_image_override: None,
             odgm_pull_policy_override: None,
+            odgm_extra_env: None,
             router_service_name: None,
             router_service_port: None,
             telemetry: ResolvedTelemetry::disabled(),
@@ -1304,6 +1313,7 @@ mod tests {
             profile: "dev",
             odgm_image_override: None,
             odgm_pull_policy_override: None,
+            odgm_extra_env: None,
             router_service_name: None,
             router_service_port: None,
             telemetry: ResolvedTelemetry::disabled(),
@@ -1390,6 +1400,7 @@ mod tests {
             profile: "dev",
             odgm_image_override: None,
             odgm_pull_policy_override: None,
+            odgm_extra_env: None,
             router_service_name: None,
             router_service_port: None,
             telemetry: ResolvedTelemetry::disabled(),
@@ -1446,6 +1457,7 @@ mod tests {
             profile: "dev",
             odgm_image_override: None,
             odgm_pull_policy_override: None,
+            odgm_extra_env: None,
             router_service_name: None,
             router_service_port: None,
             telemetry: ResolvedTelemetry::disabled(),
@@ -1712,6 +1724,7 @@ mod tests {
             profile: "dev",
             odgm_image_override: None,
             odgm_pull_policy_override: None,
+            odgm_extra_env: None,
             router_service_name: None,
             router_service_port: None,
             telemetry: ResolvedTelemetry::disabled(),
@@ -1749,6 +1762,7 @@ mod tests {
             profile: "dev",
             odgm_image_override: None,
             odgm_pull_policy_override: None,
+            odgm_extra_env: None,
             router_service_name: None,
             router_service_port: None,
             telemetry: ResolvedTelemetry::disabled(),
@@ -1803,6 +1817,7 @@ mod tests {
             profile: "dev",
             odgm_image_override: None,
             odgm_pull_policy_override: None,
+            odgm_extra_env: None,
             router_service_name: None,
             router_service_port: None,
             telemetry: ResolvedTelemetry::disabled(),

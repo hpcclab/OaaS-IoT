@@ -40,7 +40,7 @@ fn inject_trace_context(options: &mut HashMap<String, String>) {
     if let Some(tp) = options.get("traceparent") {
         tracing::info!(traceparent = %tp, "Injected trace context");
     } else {
-        tracing::warn!("No traceparent injected - propagator may not be set");
+        tracing::debug!("No traceparent injected - propagator may not be set");
     }
 }
 
@@ -173,13 +173,12 @@ pub async fn invoke_fn(
             }
             Ok(Err(e)) => {
                 // retry only on RetrieveReplyErr
-                if let oprc_invoke::proxy::ProxyError::RetrieveReplyErr(_) = e {
-                    if attempt < retries {
+                if let oprc_invoke::proxy::ProxyError::RetrieveReplyErr(_) = e
+                    && attempt < retries {
                         attempt += 1;
                         sleep(backoff).await;
                         continue;
                     }
-                }
                 warn!("gateway error: {:?}", e);
                 return Err(GatewayError::from(e));
             }
@@ -287,13 +286,12 @@ pub async fn invoke_obj(
                 return Ok(out);
             }
             Ok(Err(e)) => {
-                if let oprc_invoke::proxy::ProxyError::RetrieveReplyErr(_) = e {
-                    if attempt < retries {
+                if let oprc_invoke::proxy::ProxyError::RetrieveReplyErr(_) = e
+                    && attempt < retries {
                         attempt += 1;
                         sleep(backoff).await;
                         continue;
                     }
-                }
                 return Err(GatewayError::from(e));
             }
             Err(_) => {
@@ -346,20 +344,19 @@ pub async fn get_obj(
         };
         let meta = ObjMeta {
             cls_id: path.cls.clone(),
-            partition_id: path.pid as u32,
+            partition_id: path.pid,
             object_id: Some(object_id),
         };
         let fut = proxy.get_obj(&meta);
         match tokio::time::timeout(timeout, fut).await {
             Ok(Ok(o)) => break o,
             Ok(Err(e)) => {
-                if let oprc_invoke::proxy::ProxyError::RetrieveReplyErr(_) = e {
-                    if attempt < retries {
+                if let oprc_invoke::proxy::ProxyError::RetrieveReplyErr(_) = e
+                    && attempt < retries {
                         attempt += 1;
                         sleep(backoff).await;
                         continue;
                     }
-                }
                 return Err(GatewayError::from(e));
             }
             Err(_) => {
@@ -374,7 +371,7 @@ pub async fn get_obj(
         if o.metadata.is_none() {
             return Err(GatewayError::NoObjStr(
                 path.cls.clone(),
-                path.pid as u32,
+                path.pid,
                 path.oid.clone(),
             ));
         }
@@ -403,7 +400,7 @@ pub async fn get_obj(
             }
         } else {
             let mut buf = bytes::BytesMut::with_capacity(128);
-            if let Ok(_) = o.encode(&mut buf) {
+            if o.encode(&mut buf).is_ok() {
                 let mut resp = buf.into_response();
                 let headers = resp.headers_mut();
                 headers.insert(
@@ -423,7 +420,7 @@ pub async fn get_obj(
     } else {
         return Err(GatewayError::NoObjStr(
             path.cls.clone(),
-            path.pid as u32,
+            path.pid,
             path.oid.clone(),
         ));
     }
@@ -469,7 +466,7 @@ pub async fn put_obj(
     };
     let meta = ObjMeta {
         cls_id: path.cls.clone(),
-        partition_id: path.pid as u32,
+        partition_id: path.pid,
         object_id: Some(object_id),
     };
     let content_type = headers
@@ -482,7 +479,7 @@ pub async fn put_obj(
     } else if content_type.starts_with("application/x-protobuf")
         || content_type.starts_with("application/octet-stream")
     {
-        ObjData::decode(body).map_err(|e| GatewayError::InvalidProtobuf(e))?
+        ObjData::decode(body).map_err(GatewayError::InvalidProtobuf)?
     } else {
         return Err(GatewayError::UnknownError(format!(
             "unsupported content-type: {}",
@@ -495,13 +492,12 @@ pub async fn put_obj(
         match tokio::time::timeout(timeout, proxy.set_obj(obj.clone())).await {
             Ok(Ok(_)) => break,
             Ok(Err(e)) => {
-                if let oprc_invoke::proxy::ProxyError::RetrieveReplyErr(_) = e {
-                    if attempt < retries {
+                if let oprc_invoke::proxy::ProxyError::RetrieveReplyErr(_) = e
+                    && attempt < retries {
                         attempt += 1;
                         sleep(backoff).await;
                         continue;
                     }
-                }
                 return Err(GatewayError::from(e));
             }
             Err(_) => {
@@ -551,7 +547,7 @@ pub async fn del_obj(
     };
     let meta = ObjMeta {
         cls_id: path.cls.clone(),
-        partition_id: path.pid as u32,
+        partition_id: path.pid,
         object_id: Some(object_id),
     };
     let mut attempt = 0u32;
@@ -559,13 +555,12 @@ pub async fn del_obj(
         match tokio::time::timeout(timeout, proxy.del_obj(&meta)).await {
             Ok(Ok(_)) => break,
             Ok(Err(e)) => {
-                if let oprc_invoke::proxy::ProxyError::RetrieveReplyErr(_) = e {
-                    if attempt < retries {
+                if let oprc_invoke::proxy::ProxyError::RetrieveReplyErr(_) = e
+                    && attempt < retries {
                         attempt += 1;
                         sleep(backoff).await;
                         continue;
                     }
-                }
                 return Err(GatewayError::from(e));
             }
             Err(_) => {
@@ -628,13 +623,12 @@ pub async fn list_objects(
         match tokio::time::timeout(timeout, fut).await {
             Ok(Ok(envs)) => break envs,
             Ok(Err(e)) => {
-                if let oprc_invoke::proxy::ProxyError::RetrieveReplyErr(_) = e {
-                    if attempt < retries {
+                if let oprc_invoke::proxy::ProxyError::RetrieveReplyErr(_) = e
+                    && attempt < retries {
                         attempt += 1;
                         sleep(backoff).await;
                         continue;
                     }
-                }
                 return Err(GatewayError::from(e));
             }
             Err(_) => {
@@ -651,12 +645,11 @@ pub async fn list_objects(
 
     for env in envelopes {
         // The last envelope may contain the next_cursor
-        if let Some(cursor_bytes) = env.next_cursor {
-            if !cursor_bytes.is_empty() {
+        if let Some(cursor_bytes) = env.next_cursor
+            && !cursor_bytes.is_empty() {
                 next_cursor =
                     Some(BASE64_URL_SAFE_NO_PAD.encode(&cursor_bytes));
             }
-        }
         // Only add if this is an actual object item (not just cursor carrier)
         if !env.object_id.is_empty() {
             objects.push(ObjectListItem {

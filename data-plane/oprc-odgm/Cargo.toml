@@ -43,6 +43,7 @@ tracing-opentelemetry = { workspace = true }
 opentelemetry = { workspace = true }
 nanoid = { workspace = true }
 serde_json = { workspace = true }
+base64 = { workspace = true }
 zenoh = { workspace = true }
 oprc-zenoh = { workspace = true }
 oprc-observability = { workspace = true }
@@ -68,6 +69,10 @@ criterion = { workspace = true, features = [
 test-log = { workspace = true }
 serial_test = { workspace = true }
 tempfile = { workspace = true }
+axum = { workspace = true }
+oprc-gateway = { path = "../oprc-gateway" }
+tokio-tungstenite = { workspace = true }
+futures-util = { workspace = true }
 
 [[bench]]
 name = "bench_event"

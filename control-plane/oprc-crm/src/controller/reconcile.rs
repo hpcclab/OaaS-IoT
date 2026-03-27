@@ -197,6 +197,7 @@ pub async fn reconcile(
                 &ctx.cfg.profile,
                 ctx.cfg.templates.odgm_img_override.as_deref(),
                 ctx.cfg.templates.odgm_pull_policy_override.as_deref(),
+                ctx.cfg.templates.odgm_extra_env.as_deref(),
                 &ctx.cfg.otel,
                 spec,
                 ctx.include_knative,
@@ -209,8 +210,7 @@ pub async fn reconcile(
             if let crate::controller::fsm::actions::FsmAction::DeleteOrphans(
                 list,
             ) = act
-            {
-                if !list.is_empty() {
+                && !list.is_empty() {
                     info!(%ns, %name, count=list.len(), "fsm: deleting orphan children");
                     // Best-effort deletes across known child kinds
                     let dep_api: Api<Deployment> =
@@ -247,7 +247,6 @@ pub async fn reconcile(
                         }
                     }
                 }
-            }
         }
         match phase {
             Phase::Available | Phase::Deleting => {}
@@ -265,6 +264,7 @@ pub async fn reconcile(
             &ctx.cfg.profile,
             ctx.cfg.templates.odgm_img_override.as_deref(),
             ctx.cfg.templates.odgm_pull_policy_override.as_deref(),
+            ctx.cfg.templates.odgm_extra_env.as_deref(),
             &ctx.cfg.otel,
             spec,
             ctx.include_knative,
@@ -338,8 +338,8 @@ pub async fn reconcile(
         );
         status_obj.conditions = Some(conditions);
         // Update per-function readiness if predicted list exists and spec defines functions.
-        if spec.functions.len() > 0 {
-            if let Some(ref mut funcs) = status_obj.functions {
+        if !spec.functions.is_empty()
+            && let Some(ref mut funcs) = status_obj.functions {
                 // We need the observed children we already built in FSM path; recompute here to avoid threading.
                 let observed =
                     crate::controller::fsm::observed_lister::observe_children(
@@ -351,7 +351,6 @@ pub async fn reconcile(
                     .await;
                 crate::controller::fsm::function_readiness::update_function_readiness(funcs, &observed);
             }
-        }
     }
     // Discover router services for status reporting (observed state)
     {
@@ -371,9 +370,9 @@ pub async fn reconcile(
                         .iter()
                         .find(|p| p.name.as_deref() == Some("zenoh"))
                     {
-                        port_i32 = p.port as i32;
+                        port_i32 = p.port;
                     } else if let Some(p) = ports.first() {
-                        port_i32 = p.port as i32;
+                        port_i32 = p.port;
                     }
                 }
                 if let Some(svc_name) = svc.metadata.name.clone() {
@@ -423,6 +422,7 @@ async fn apply_workload(
     profile: &str,
     odgm_image_override: Option<&str>,
     odgm_pull_policy_override: Option<&str>,
+    odgm_extra_env: Option<&str>,
     otel_cfg: &crate::config::OtelConfig,
     spec: &crate::crd::class_runtime::ClassRuntimeSpec,
     include_knative: bool,
@@ -435,8 +435,7 @@ async fn apply_workload(
     if let Ok(list) = svc_api
         .list(&ListParams::default().labels("app=router,platform=oaas"))
         .await
-    {
-        if let Some(svc) = list.items.into_iter().next() {
+        && let Some(svc) = list.items.into_iter().next() {
             router_service_name = svc.metadata.name.clone();
             // pick first port or a port named "zenoh"; default 17447 when absent
             if let Some(ports) =
@@ -446,16 +445,15 @@ async fn apply_workload(
                 if let Some(p) =
                     ports.iter().find(|p| p.name.as_deref() == Some("zenoh"))
                 {
-                    router_service_port = Some(p.port as i32);
+                    router_service_port = Some(p.port);
                 } else if let Some(p) = ports.first() {
-                    router_service_port = Some(p.port as i32);
+                    router_service_port = Some(p.port);
                 }
             }
             if router_service_port.is_none() {
                 router_service_port = Some(17447);
             }
         }
-    }
     let tm = TemplateManager::new(include_knative);
 
     // Resolve telemetry config: CR-level overrides cluster defaults
@@ -468,7 +466,7 @@ async fn apply_workload(
     let resources = tm
         .render_workload(RenderContext {
             name,
-            namespace: &ns,
+            namespace: ns,
             owner_api_version: "oaas.io/v1alpha1",
             owner_kind: "ClassRuntime",
             owner_uid,
@@ -476,6 +474,7 @@ async fn apply_workload(
             profile,
             odgm_image_override,
             odgm_pull_policy_override,
+            odgm_extra_env,
             router_service_name,
             router_service_port,
             telemetry,
@@ -510,12 +509,11 @@ async fn apply_workload(
                                 .unwrap_or(false)
                     })
                     .unwrap_or(false);
-                if suppress_replicas {
-                    if let Some(ref mut spec) = dep.spec {
+                if suppress_replicas
+                    && let Some(ref mut spec) = dep.spec {
                         spec.replicas = None;
                         trace!(%ns, %name, "apply_workload: replicas suppressed under enforcement");
                     }
-                }
                 let dep_name = dep
                     .metadata
                     .name
@@ -667,11 +665,10 @@ async fn delete_children(
         }
     }
 
-    if include_knative {
-        if let Ok(discovery) =
+    if include_knative
+        && let Ok(discovery) =
             kube::discovery::Discovery::new(client.clone()).run().await
-        {
-            if discovery
+            && discovery
                 .groups()
                 .any(|g| g.name() == "serving.knative.dev")
             {
@@ -698,8 +695,6 @@ async fn delete_children(
                         dyn_api.delete(name, &DeleteParams::default()).await;
                 }
             }
-        }
-    }
     info!(%ns, %name, "delete_children: completed child resource deletion");
 }
 

@@ -87,12 +87,11 @@ async fn build_deployment_topology(
         let mut class_metadata = HashMap::new();
         class_metadata
             .insert("package".into(), deployment.package_name.clone());
-        if let Some(ref odgm) = deployment.odgm {
-            if let Some(partitions) = odgm.partition_count {
+        if let Some(ref odgm) = deployment.odgm
+            && let Some(partitions) = odgm.partition_count {
                 class_metadata
                     .insert("partitions".into(), partitions.to_string());
             }
-        }
         nodes.push(TopologyNode {
             id: class_id.clone(),
             node_type: "class".into(),

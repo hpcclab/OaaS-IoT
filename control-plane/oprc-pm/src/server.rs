@@ -27,6 +27,8 @@ pub struct AppState {
     pub artifact_store: Option<Arc<dyn ArtifactStore>>,
     pub source_store: Option<Arc<dyn SourceStore>>,
     pub script_service: Option<Arc<ScriptService>>,
+    #[cfg(feature = "network-sim")]
+    pub netsim_manager: Option<Arc<crate::services::netsim::NetsimManager>>,
 }
 
 pub struct ApiServer {
@@ -90,12 +92,15 @@ impl ApiServer {
         let (gateway_proxy, gateway_max_payload) = match gateway_config {
             Some(cfg) => {
                 info!(
-                    "Gateway proxy enabled: {} (max payload: {} bytes)",
-                    cfg.url, cfg.max_payload_bytes
+                    "Gateway proxy enabled: {} (max payload: {} bytes, env_gateways: {:?})",
+                    cfg.url,
+                    cfg.max_payload_bytes,
+                    cfg.env_urls.keys().collect::<Vec<_>>()
                 );
                 (
-                    Some(Arc::new(GatewayProxy::new(
+                    Some(Arc::new(GatewayProxy::with_env_gateways(
                         cfg.url,
+                        cfg.env_urls,
                         cfg.timeout_seconds,
                     ))),
                     cfg.max_payload_bytes,
@@ -112,11 +117,12 @@ impl ApiServer {
             artifact_store,
             source_store,
             script_service,
+            #[cfg(feature = "network-sim")]
+            netsim_manager: None,
         };
 
         let app = Self::build_router(
             state,
-            &config,
             otel_metrics,
             gateway_max_payload,
         );
@@ -126,7 +132,6 @@ impl ApiServer {
 
     fn build_router(
         state: AppState,
-        config: &ServerConfig,
         otel_metrics: Arc<OtelMetrics>,
         gateway_max_payload: usize,
     ) -> Router {
@@ -183,7 +188,7 @@ impl ApiServer {
                 "/api/v1/scripts/{package}/{function}",
                 get(handlers::get_script_source),
             )
-            // Gateway reverse proxy
+            // Gateway reverse proxy (default — no env)
             .route("/api/gateway/{*path}", get(handlers::gateway_proxy))
             .route("/api/gateway/{*path}", post(handlers::gateway_proxy))
             .route(
@@ -191,18 +196,43 @@ impl ApiServer {
                 axum::routing::put(handlers::gateway_proxy),
             )
             .route("/api/gateway/{*path}", delete(handlers::gateway_proxy))
+            // Gateway reverse proxy (per-env)
+            .route(
+                "/api/gateway/env/{env}/{*path}",
+                get(handlers::gateway_proxy_env),
+            )
+            .route(
+                "/api/gateway/env/{env}/{*path}",
+                post(handlers::gateway_proxy_env),
+            )
+            .route(
+                "/api/gateway/env/{env}/{*path}",
+                axum::routing::put(handlers::gateway_proxy_env),
+            )
+            .route(
+                "/api/gateway/env/{env}/{*path}",
+                delete(handlers::gateway_proxy_env),
+            )
             // Health check endpoint
             .route("/health", get(health_check))
             .layer(axum::extract::DefaultBodyLimit::max(gateway_max_payload))
             .layer(axum::middleware::from_fn(otel_metrics_middleware))
             .layer(Extension(otel_metrics))
             .layer(create_middleware_stack())
-            .fallback_service(
-                ServeDir::new(&config.static_dir).not_found_service(
-                    ServeFile::new(format!("{}/index.html", config.static_dir)),
-                ),
-            )
             .with_state(state)
+    }
+
+    /// Apply the SPA fallback service. Must be called **after** all routes
+    /// (including optional netsim routes) have been merged.
+    fn finalize(self) -> Router {
+        self.app.fallback_service(
+            ServeDir::new(&self.config.static_dir).not_found_service(
+                ServeFile::new(format!(
+                    "{}/index.html",
+                    self.config.static_dir
+                )),
+            ),
+        )
     }
 
     pub async fn serve(self) -> Result<(), Box<dyn std::error::Error>> {
@@ -213,15 +243,28 @@ impl ApiServer {
         info!("Health check available at: http://{}/health", addr);
         info!("API documentation: http://{}/api/v1", addr);
 
-        axum::serve(listener, self.app).await?;
+        let app = self.finalize();
+        axum::serve(listener, app).await?;
 
         Ok(())
+    }
+
+    /// Merge additional routes into this server's router.
+    #[cfg(feature = "network-sim")]
+    pub fn merge_netsim(
+        mut self,
+        manager: Arc<crate::services::netsim::NetsimManager>,
+    ) -> Self {
+        let netsim_routes =
+            crate::api::handlers::network_sim::build_netsim_api(manager);
+        self.app = self.app.merge(netsim_routes);
+        self
     }
 
     /// Consume and return the underlying Axum Router so callers can serve it themselves
     /// (e.g., on an ephemeral port in tests) and discover the bound address.
     pub fn into_router(self) -> Router {
-        self.app
+        self.finalize()
     }
 }
 

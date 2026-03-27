@@ -290,7 +290,7 @@ impl Runner {
             Ok(resp)
         } else {
             warn!("call_write: no payload in response for num {}", num);
-            return Err(anyhow::anyhow!("no payload in response"));
+            Err(anyhow::anyhow!("no payload in response"))
         }
     }
 
@@ -328,7 +328,7 @@ impl Runner {
             }
         } else {
             warn!("call_read: no payload in response");
-            return Err(anyhow::anyhow!("no payload in response"));
+            Err(anyhow::anyhow!("no payload in response"))
         }
     }
 }

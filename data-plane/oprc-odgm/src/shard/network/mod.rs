@@ -101,31 +101,26 @@ impl<R: ReplicationLayer + 'static> UnifiedShardNetwork<R> {
 
     #[tracing::instrument(skip(self), fields(id=%self.metadata.id))]
     pub async fn stop(&mut self) {
-        if let Some(sub) = self.set_subscriber.take() {
-            if let Err(e) = sub.undeclare().await {
+        if let Some(sub) = self.set_subscriber.take()
+            && let Err(e) = sub.undeclare().await {
                 tracing::warn!("Failed to undeclare subscriber: {}", e);
             };
-        }
-        if let Some(q) = self.set_queryable.take() {
-            if let Err(e) = q.undeclare().await {
+        if let Some(q) = self.set_queryable.take()
+            && let Err(e) = q.undeclare().await {
                 tracing::warn!("Failed to undeclare queryable: {}", e);
             };
-        }
-        if let Some(q) = self.get_queryable.take() {
-            if let Err(e) = q.undeclare().await {
+        if let Some(q) = self.get_queryable.take()
+            && let Err(e) = q.undeclare().await {
                 tracing::warn!("Failed to undeclare queryable: {}", e);
             };
-        }
-        if let Some(q) = self.batch_set_queryable.take() {
-            if let Err(e) = q.undeclare().await {
+        if let Some(q) = self.batch_set_queryable.take()
+            && let Err(e) = q.undeclare().await {
                 tracing::warn!("Failed to undeclare queryable: {}", e);
             };
-        }
-        if let Some(q) = self.list_objects_queryable.take() {
-            if let Err(e) = q.undeclare().await {
+        if let Some(q) = self.list_objects_queryable.take()
+            && let Err(e) = q.undeclare().await {
                 tracing::warn!("Failed to undeclare list_objects queryable: {}", e);
             };
-        }
     }
 
     pub fn is_running(&self) -> bool {

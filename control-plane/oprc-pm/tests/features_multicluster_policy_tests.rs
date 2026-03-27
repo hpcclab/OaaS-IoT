@@ -153,6 +153,7 @@ fn base_package() -> OPackage {
                 parameters: vec![],
             }],
             state_spec: None,
+            options: Default::default(),
         }],
         functions: vec![OFunction {
             key: "f".into(),

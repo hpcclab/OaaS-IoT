@@ -71,8 +71,11 @@ pub async fn build_api_server_from_env() -> Result<ApiServer> {
             ));
 
             (
-                Some(fs_store.clone() as Arc<dyn crate::services::artifact::ArtifactStore>),
-                Some(fs_store as Arc<dyn crate::services::artifact::SourceStore>),
+                Some(fs_store.clone()
+                    as Arc<dyn crate::services::artifact::ArtifactStore>),
+                Some(
+                    fs_store as Arc<dyn crate::services::artifact::SourceStore>,
+                ),
                 Some(script_svc),
             )
         } else {
@@ -83,7 +86,11 @@ pub async fn build_api_server_from_env() -> Result<ApiServer> {
     // Server
     let server_config = config.server();
     let gateway_config = config.gateway();
-    Ok(ApiServer::with_all(
+    #[cfg(feature = "network-sim")]
+    let crm_manager_for_netsim = crm_manager.clone();
+
+    #[allow(unused_mut)]
+    let mut server = ApiServer::with_all(
         package_service,
         deployment_service,
         crm_manager,
@@ -92,5 +99,41 @@ pub async fn build_api_server_from_env() -> Result<ApiServer> {
         artifact_store,
         source_store,
         script_service,
-    ))
+    );
+
+    // Network simulation (optional — requires feature + OPRC_NETSIM_ENABLED)
+    #[cfg(feature = "network-sim")]
+    {
+        server = setup_netsim(server, crm_manager_for_netsim).await?;
+    }
+
+    Ok(server)
+}
+
+/// Conditionally wire up network simulation if `OPRC_NETSIM_ENABLED=true`.
+///
+/// Uses the existing CRM gRPC connections — no separate Zenoh session needed.
+/// Each CRM forwards netsim commands to its co-deployed router via ZRPC.
+///
+/// Reads env vars:
+/// - `OPRC_NETSIM_ENABLED` — `"true"` to activate
+#[cfg(feature = "network-sim")]
+async fn setup_netsim(
+    server: ApiServer,
+    crm_manager: Arc<CrmManager>,
+) -> Result<ApiServer> {
+    let enabled = std::env::var("OPRC_NETSIM_ENABLED")
+        .unwrap_or_default()
+        .eq_ignore_ascii_case("true");
+    if !enabled {
+        return Ok(server);
+    }
+
+    let clusters = crm_manager.list_clusters().await;
+    info!(clusters = ?clusters, "Setting up network simulation control via CRM gRPC");
+
+    let manager =
+        Arc::new(crate::services::netsim::NetsimManager::new(crm_manager));
+
+    Ok(server.merge_netsim(manager))
 }

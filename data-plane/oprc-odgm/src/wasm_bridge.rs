@@ -5,6 +5,7 @@
 //! - [`ShardDataOpsFactory`]: implements `DataOpsFactory` to produce adapters per call
 //! - [`setup_wasm_offloader`]: detects `wasm://` routes and builds the WASM executor
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use oprc_wasm::adapter::{DataOpsFactory, WasmExecutorAdapter};
@@ -185,6 +186,53 @@ impl OdgmDataOps for ShardDataOpsAdapter {
             ))),
         }
     }
+
+    async fn batch_set_values(
+        &self,
+        _cls_id: &str,
+        _partition_id: u32,
+        object_id: &str,
+        entries: Vec<(String, Vec<u8>)>,
+    ) -> Result<(), DataOpsError> {
+        let values: HashMap<String, ObjectVal> = entries
+            .into_iter()
+            .map(|(k, v)| {
+                (
+                    k,
+                    ObjectVal {
+                        data: v,
+                        r#type: oprc_grpc::ValType::Byte,
+                    },
+                )
+            })
+            .collect();
+        self.shard
+            .batch_set_entries_granular(object_id, values, None)
+            .await
+            .map(|_| ())
+            .map_err(shard_err_to_ops)
+    }
+
+    async fn get_all_entries(
+        &self,
+        _cls_id: &str,
+        _partition_id: u32,
+        object_id: &str,
+    ) -> Result<Option<Vec<(String, Vec<u8>)>>, DataOpsError> {
+        match self
+            .shard
+            .reconstruct_object_granular(object_id, 1024)
+            .await
+        {
+            Ok(Some(obj)) => {
+                let entries =
+                    obj.entries.into_iter().map(|(k, v)| (k, v.data)).collect();
+                Ok(Some(entries))
+            }
+            Ok(None) => Ok(None),
+            Err(e) => Err(shard_err_to_ops(e)),
+        }
+    }
 }
 
 // ─── DataOpsFactory ─────────────────────────────────────────
@@ -235,7 +283,6 @@ pub async fn setup_wasm_offloader(
 
     // Create wasmtime engine
     let mut config = wasmtime::Config::new();
-    config.async_support(true);
     config.wasm_component_model(true);
     config.consume_fuel(true);
 
@@ -249,7 +296,13 @@ pub async fn setup_wasm_offloader(
 
     let module_store = Arc::new(WasmModuleStore::new(engine));
 
-    // Load each WASM module
+    // Load each WASM module, deduplicating by URL to avoid recompiling the
+    // same component binary multiple times (compilation is very expensive).
+    let mut url_to_module: std::collections::HashMap<
+        String,
+        Arc<oprc_wasm::store::CompiledModule>,
+    > = std::collections::HashMap::new();
+
     for (fn_id, route) in &wasm_routes {
         let module_url = match &route.wasm_module_url {
             Some(url) => url.clone(),
@@ -263,14 +316,24 @@ pub async fn setup_wasm_offloader(
             }
         };
 
-        debug!(fn_id = %fn_id, url = %module_url, "Loading WASM module");
-        if let Err(e) = module_store.load(fn_id, &module_url).await {
-            warn!(
-                fn_id = %fn_id,
-                url = %module_url,
-                error = %e,
-                "Failed to load WASM module"
-            );
+        if let Some(existing) = url_to_module.get(&module_url) {
+            debug!(fn_id = %fn_id, url = %module_url, "Reusing already-compiled WASM module");
+            module_store.insert(fn_id, existing.clone()).await;
+        } else {
+            debug!(fn_id = %fn_id, url = %module_url, "Loading WASM module");
+            match module_store.load(fn_id, &module_url).await {
+                Ok(compiled) => {
+                    url_to_module.insert(module_url, compiled);
+                }
+                Err(e) => {
+                    warn!(
+                        fn_id = %fn_id,
+                        url = %module_url,
+                        error = %e,
+                        "Failed to load WASM module"
+                    );
+                }
+            }
         }
     }
 
@@ -284,6 +347,14 @@ pub async fn setup_wasm_offloader(
 
     let factory = Arc::new(ShardDataOpsFactory::new(shard));
 
+    // Build per-function fuel map from routes
+    let fn_fuel: std::collections::HashMap<String, u64> = wasm_routes
+        .iter()
+        .filter_map(|(fn_id, route)| {
+            route.wasm_fuel.map(|f| (fn_id.to_string(), f))
+        })
+        .collect();
+
     // Create OOP context for oaas-object world support.
     // Uses shard identity for locality checks; remote proxy is None for now
     // (can be injected when cross-shard Zenoh proxy is available).
@@ -293,7 +364,8 @@ pub async fn setup_wasm_offloader(
         shard_partition_id: metadata.partition_id as u32,
     };
     let adapter =
-        WasmExecutorAdapter::with_oop_context(executor, factory, oop_context);
+        WasmExecutorAdapter::with_oop_context(executor, factory, oop_context)
+            .with_fn_fuel(fn_fuel);
 
     Some(Arc::new(adapter))
 }

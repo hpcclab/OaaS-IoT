@@ -62,6 +62,6 @@ where
     // Unified shard configuration
     pub(crate) config: ShardOptions,
 
-    // V2 per-entry dispatcher (J2 skeleton)
-    pub(crate) v2_dispatcher: Option<crate::events::V2DispatcherRef>,
+    // Event dispatcher
+    pub(crate) v2_dispatcher: Option<crate::events::EventDispatcherRef>,
 }

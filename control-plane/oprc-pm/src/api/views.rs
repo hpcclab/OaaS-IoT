@@ -52,7 +52,7 @@ impl From<oprc_grpc::proto::runtime::ClassRuntimeSummary> for ApiClassRuntime {
             class_key: src.class_key,
             target_environment: src.target_environment,
             cluster_name: src.cluster_name,
-            status: src.status.map(|s| ApiClassRuntimeStatus::from(s)),
+            status: src.status.map(ApiClassRuntimeStatus::from),
             nfr_compliance: src.nfr_compliance,
             resource_refs: src.resource_refs,
             created_at: src.created_at,

@@ -1,0 +1,52 @@
+name: pixel-canvas
+classes:
+  - key: pixel-canvas
+    options:
+      zenoh_event_publish: "true"
+      zenoh_event_locality: "SessionLocal"
+      ws_event_include_values: "true"
+      mst_sync_events: "true"
+    state_spec:
+      consistency_model: STRONG
+    function_bindings:
+      - name: paint
+        function_key: pixel-canvas-wasm
+      - name: paintBatch
+        function_key: pixel-canvas-wasm
+      - name: getCanvas
+        function_key: pixel-canvas-wasm
+      - name: setMeta
+        function_key: pixel-canvas-wasm
+      - name: clear
+        function_key: pixel-canvas-wasm
+      - name: golStep
+        function_key: pixel-canvas-gol-wasm
+functions:
+  - key: pixel-canvas-wasm
+    function_type: WASM
+    provision_config:
+      wasm_module_url: "oci://ghcr.io/pawissanutt/oaas-rs/pixel-canvas-wasm:dev"
+      wasm_fuel: 1000000000000
+  - key: pixel-canvas-gol-wasm
+    function_type: WASM
+    provision_config:
+      wasm_module_url: "oci://ghcr.io/pawissanutt/oaas-rs/pixel-canvas-gol-wasm:dev"
+      wasm_fuel: 1000000000000
+
+deployments: 
+  - key: pixel-canvas
+    package_name: pixel-canvas
+    class_key: pixel-canvas
+    target_envs: 
+      # - cloud
+      # - edge1
+      # - edge2
+      - oaas-1
+      - oaas-2
+    odgm:
+      log: info
+      zenoh_mode: peer
+      options:
+        invoke_only_primary: "false"
+      #   storage_backend: fjall
+      #   storage_path: ./target/dev

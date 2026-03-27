@@ -132,6 +132,7 @@ impl ClassRuntimeBuilder {
                     .collect(),
                 node_id: cfg.odgm_node_id,
                 collection_assignments: col_assignments,
+                zenoh_mode: cfg.zenoh_mode.clone(),
             });
         }
 
@@ -149,6 +150,7 @@ impl ClassRuntimeBuilder {
             options: None,
             log: None,
             env_node_ids: BTreeMap::new(),
+            zenoh_mode: None,
             node_id: None,
             collection_assignments: BTreeMap::new(),
         })
@@ -159,14 +161,14 @@ impl ClassRuntimeBuilder {
         &self,
         cfg: &oprc_grpc::proto::deployment::OdgmConfig,
     ) -> Option<InvocationsSpec> {
-        if cfg.invocations.is_none() {
-            return None;
-        }
+        cfg.invocations.as_ref()?;
         let inv = cfg.invocations.as_ref().unwrap();
-        // Build index from function_key -> (idx, port, Option<wasm_module_url>) for URL synthesis
+        // Build index from function_key -> (idx, port, Option<wasm_module_url>, Option<wasm_fuel>) for URL synthesis
         let total = self.du.functions.len();
-        let mut fk_index: std::collections::BTreeMap<String, (usize, u16, Option<String>)> =
-            std::collections::BTreeMap::new();
+        let mut fk_index: std::collections::BTreeMap<
+            String,
+            (usize, u16, Option<String>, Option<u64>),
+        > = std::collections::BTreeMap::new();
         for (i, f) in self.du.functions.iter().enumerate() {
             let port = f
                 .provision_config
@@ -177,7 +179,10 @@ impl ClassRuntimeBuilder {
                 .provision_config
                 .as_ref()
                 .and_then(|p| p.wasm_module_url.clone());
-            fk_index.insert(f.function_key.clone(), (i, port, wasm_url));
+            let wasm_fuel =
+                f.provision_config.as_ref().and_then(|p| p.wasm_fuel);
+            fk_index
+                .insert(f.function_key.clone(), (i, port, wasm_url, wasm_fuel));
         }
         // Build index from binding name -> function_key to resolve idx when function_key missing
         let mut binding_index: std::collections::BTreeMap<String, String> =
@@ -192,14 +197,20 @@ impl ClassRuntimeBuilder {
                 .function_key
                 .clone()
                 .or_else(|| binding_index.get(k).cloned());
-            let (url, wasm_module_url) = if let Some(fk) = resolved_fk.as_ref() {
-                if let Some((_idx, _port, wasm_url)) = fk_index.get(fk) {
+            let (url, wasm_module_url) = if let Some(fk) = resolved_fk.as_ref()
+            {
+                if let Some((_idx, _port, wasm_url, _fuel)) = fk_index.get(fk) {
                     if let Some(module_url) = wasm_url {
                         // WASM function
                         (format!("wasm://{}", fk), Some(module_url.clone()))
                     } else {
                         // Container function
-                        (crate::routing::function_service_url(&self.name, *_idx, total), None)
+                        (
+                            crate::routing::function_service_url(
+                                &self.name, *_idx, total,
+                            ),
+                            None,
+                        )
                     }
                 } else {
                     (v.url.clone(), None)
@@ -207,11 +218,16 @@ impl ClassRuntimeBuilder {
             } else {
                 (v.url.clone(), None)
             };
+            let wasm_fuel = resolved_fk
+                .as_ref()
+                .and_then(|fk| fk_index.get(fk))
+                .and_then(|(_, _, _, fuel)| *fuel);
             routes.insert(
                 k.clone(),
                 crate::crd::class_runtime::FunctionRoute {
                     url,
                     wasm_module_url,
+                    wasm_fuel,
                     stateless: v.stateless,
                     standby: v.standby,
                     active_group: v.active_group.clone(),
@@ -244,11 +260,13 @@ impl ClassRuntimeBuilder {
         {
             return None;
         }
-        // Build index: function_key -> (index, port, Option<wasm_module_url>)
+        // Build index: function_key -> (index, port, Option<wasm_module_url>, Option<wasm_fuel>)
         let base = crate::templates::manager::dns1035_safe(&self.name);
         let multi = self.du.functions.len() > 1;
-        let mut fk_index: std::collections::BTreeMap<String, (usize, u16, Option<String>)> =
-            std::collections::BTreeMap::new();
+        let mut fk_index: std::collections::BTreeMap<
+            String,
+            (usize, u16, Option<String>, Option<u64>),
+        > = std::collections::BTreeMap::new();
         for (i, f) in self.du.functions.iter().enumerate() {
             let port = f
                 .provision_config
@@ -259,12 +277,18 @@ impl ClassRuntimeBuilder {
                 .provision_config
                 .as_ref()
                 .and_then(|p| p.wasm_module_url.clone());
-            fk_index.insert(f.function_key.clone(), (i, port, wasm_url));
+            let wasm_fuel =
+                f.provision_config.as_ref().and_then(|p| p.wasm_fuel);
+            fk_index
+                .insert(f.function_key.clone(), (i, port, wasm_url, wasm_fuel));
         }
         let mut routes = BTreeMap::new();
         for b in &self.du.function_bindings {
-            if let Some((i, _port, wasm_url)) = fk_index.get(&b.function_key) {
-                let (url, wasm_module_url) = if let Some(module_url) = wasm_url {
+            if let Some((i, _port, wasm_url, wasm_fuel)) =
+                fk_index.get(&b.function_key)
+            {
+                let (url, wasm_module_url) = if let Some(module_url) = wasm_url
+                {
                     // WASM function: use wasm:// scheme, pass module URL
                     (
                         format!("wasm://{}", b.function_key),
@@ -284,6 +308,7 @@ impl ClassRuntimeBuilder {
                     crate::crd::class_runtime::FunctionRoute {
                         url,
                         wasm_module_url,
+                        wasm_fuel: *wasm_fuel,
                         stateless: b.stateless,
                         standby: Some(false),
                         active_group: Vec::new(),
@@ -332,8 +357,10 @@ impl ClassRuntimeBuilder {
             .filter(|f| {
                 // Include functions that have either a container image or a WASM module URL
                 let pc = f.provision_config.as_ref();
-                let has_image = pc.and_then(|p| p.container_image.as_ref()).is_some();
-                let has_wasm = pc.and_then(|p| p.wasm_module_url.as_ref()).is_some();
+                let has_image =
+                    pc.and_then(|p| p.container_image.as_ref()).is_some();
+                let has_wasm =
+                    pc.and_then(|p| p.wasm_module_url.as_ref()).is_some();
                 has_image || has_wasm
             })
             .map(|f| self.map_function(f))
@@ -354,6 +381,7 @@ impl ClassRuntimeBuilder {
             memory_limit: p.memory_limit.clone(),
             min_scale: p.min_scale,
             max_scale: p.max_scale,
+            wasm_fuel: p.wasm_fuel,
         });
 
         trace!(has_provision=%provision.is_some(), "builder: mapped function");

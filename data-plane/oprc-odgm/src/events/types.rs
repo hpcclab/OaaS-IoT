@@ -18,6 +18,7 @@ impl Default for EventType {
 }
 
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct EventContext {
     pub object_id: String,
     pub class_id: String,
@@ -27,45 +28,23 @@ pub struct EventContext {
     pub error_message: Option<String>,
 }
 
-impl Default for EventContext {
-    fn default() -> Self {
-        Self {
-            object_id: String::new(),
-            class_id: String::new(),
-            partition_id: 0,
-            event_type: EventType::default(),
-            payload: None,
-            error_message: None,
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct TriggerExecutionContext {
     pub source_event: EventContext,
     pub target: TriggerTarget,
 }
 
-impl Default for TriggerExecutionContext {
-    fn default() -> Self {
-        Self {
-            source_event: EventContext::default(),
-            target: TriggerTarget::default(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy)]
+#[derive(Default)]
 pub enum SerializationFormat {
+    #[default]
     Json,
     Protobuf,
 }
 
-impl Default for SerializationFormat {
-    fn default() -> Self {
-        Self::Json
-    }
-}
 
 /// Helper functions for creating and serializing trigger payloads
 pub fn create_trigger_payload(

@@ -191,8 +191,8 @@ impl OprcFunction for EventLoggerFunction {
 /// Parse TriggerPayload from bytes - tries both JSON and protobuf formats
 fn parse_trigger_payload(payload: &[u8]) -> Option<EventInfoSummary> {
     // First try JSON (default format)
-    if let Ok(trigger) = serde_json::from_slice::<TriggerPayload>(payload) {
-        if let Some(info) = trigger.event_info {
+    if let Ok(trigger) = serde_json::from_slice::<TriggerPayload>(payload)
+        && let Some(info) = trigger.event_info {
             return Some(EventInfoSummary {
                 source_cls_id: info.source_cls_id,
                 source_partition_id: info.source_partition_id,
@@ -202,11 +202,10 @@ fn parse_trigger_payload(payload: &[u8]) -> Option<EventInfoSummary> {
                 timestamp: info.timestamp,
             });
         }
-    }
     
     // Fall back to protobuf
-    if let Ok(trigger) = TriggerPayload::decode(payload) {
-        if let Some(info) = trigger.event_info {
+    if let Ok(trigger) = TriggerPayload::decode(payload)
+        && let Some(info) = trigger.event_info {
             return Some(EventInfoSummary {
                 source_cls_id: info.source_cls_id,
                 source_partition_id: info.source_partition_id,
@@ -216,7 +215,6 @@ fn parse_trigger_payload(payload: &[u8]) -> Option<EventInfoSummary> {
                 timestamp: info.timestamp,
             });
         }
-    }
     
     // Not a trigger payload - might be a direct invocation
     debug!("Payload is not a TriggerPayload (might be direct invocation)");

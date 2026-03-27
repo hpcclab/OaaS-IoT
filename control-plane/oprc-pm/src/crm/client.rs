@@ -14,6 +14,8 @@ use oprc_grpc::proto::health::health_service_client::HealthServiceClient;
 use oprc_grpc::proto::health::{
     CrmEnvRequest, HealthCheckRequest, health_check_response,
 };
+#[cfg(feature = "network-sim")]
+use oprc_grpc::proto::netsim::netsim_service_client::NetsimServiceClient;
 use oprc_grpc::proto::runtime as runtime_proto;
 use oprc_grpc::proto::topology::TopologySnapshot;
 use oprc_grpc::tracing::inject_trace_context;
@@ -32,6 +34,8 @@ pub struct CrmClient {
     grpc_deploy: Mutex<Option<GrpcDeploymentClient>>,
     grpc_topology: Mutex<Option<GrpcTopologyClient>>,
     grpc_crm_info: Mutex<Option<CrmInfoServiceClient<Channel>>>,
+    #[cfg(feature = "network-sim")]
+    grpc_netsim: Mutex<Option<NetsimServiceClient<Channel>>>,
 }
 
 impl CrmClient {
@@ -54,6 +58,8 @@ impl CrmClient {
             grpc_deploy: Mutex::new(None),
             grpc_topology: Mutex::new(None),
             grpc_crm_info: Mutex::new(None),
+            #[cfg(feature = "network-sim")]
+            grpc_netsim: Mutex::new(None),
             config,
         })
     }
@@ -160,7 +166,7 @@ impl CrmClient {
                     chrono::Utc
                         .timestamp_opt(t.seconds, t.nanos as u32)
                         .single()
-                        .unwrap_or_else(|| chrono::Utc::now())
+                        .unwrap_or_else(chrono::Utc::now)
                 } else {
                     chrono::Utc::now()
                 };
@@ -326,13 +332,12 @@ impl CrmClient {
             if let Some(ref dep) = status_resp.deployment {
                 let ts = dep
                     .created_at
-                    .map(|t| {
+                    .and_then(|t| {
                         chrono::DateTime::from_timestamp(
                             t.seconds,
                             t.nanos as u32,
                         )
                     })
-                    .flatten()
                     .unwrap_or_else(chrono::Utc::now);
                 (
                     dep.package_name.clone(),
@@ -456,5 +461,41 @@ impl CrmClient {
         } else {
             Err(CrmError::InternalError("Failed to connect to CRM".into()))
         }
+    }
+
+    // ---------------------------------------------------------------
+    // Network simulation (feature-gated)
+    // ---------------------------------------------------------------
+
+    #[cfg(feature = "network-sim")]
+    async fn ensure_netsim_client(
+        &self,
+    ) -> Result<MutexGuard<'_, Option<NetsimServiceClient<Channel>>>, CrmError>
+    {
+        let mut guard = self.grpc_netsim.lock().await;
+        if guard.is_none() {
+            let client = NetsimServiceClient::connect(self.endpoint.clone())
+                .await
+                .map_err(|e| CrmError::ConfigurationError(e.to_string()))?;
+            *guard = Some(client);
+        }
+        Ok(guard)
+    }
+
+    /// Send a netsim control command to the CRM (which forwards to its local router).
+    #[cfg(feature = "network-sim")]
+    pub async fn netsim_control(
+        &self,
+        request: oprc_grpc::proto::netsim::NetsimControlRequest,
+    ) -> Result<oprc_grpc::proto::netsim::NetsimControlResponse, CrmError> {
+        let mut guard = self.ensure_netsim_client().await?;
+        let client = guard.as_mut().ok_or_else(|| {
+            CrmError::InternalError("Netsim client not initialized".into())
+        })?;
+        let resp = client
+            .control(Request::new(request))
+            .await
+            .map_err(|s| CrmError::InternalError(s.to_string()))?;
+        Ok(resp.into_inner())
     }
 }

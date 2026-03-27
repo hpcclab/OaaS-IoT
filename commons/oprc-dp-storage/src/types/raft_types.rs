@@ -14,7 +14,9 @@ pub struct RaftLogEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum RaftLogEntryType {
+    #[default]
     Normal,        // Regular application command
     Configuration, // Membership change
     Snapshot,      // Snapshot marker
@@ -41,6 +43,7 @@ pub struct RaftLogId {
 
 /// Raft Hard State - persistent state that must survive restarts
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct RaftHardState {
     /// Current term number
     pub current_term: u64,
@@ -51,6 +54,7 @@ pub struct RaftHardState {
 /// Raft Membership - cluster configuration at a point in time
 /// This is a simplified version - in practice you might want to use OpenRaft's types directly
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct RaftMembership {
     /// Configuration index - increases with each membership change
     pub config_id: u64,
@@ -77,30 +81,8 @@ pub struct RaftSnapshotMeta {
     pub checksum: Option<String>,
 }
 
-impl Default for RaftHardState {
-    fn default() -> Self {
-        Self {
-            current_term: 0,
-            voted_for: None,
-        }
-    }
-}
 
-impl Default for RaftMembership {
-    fn default() -> Self {
-        Self {
-            config_id: 0,
-            voters: std::collections::BTreeSet::new(),
-            learners: std::collections::BTreeSet::new(),
-        }
-    }
-}
 
-impl Default for RaftLogEntryType {
-    fn default() -> Self {
-        Self::Normal
-    }
-}
 
 impl RaftLogEntry {
     /// Create a new normal log entry with StorageValue

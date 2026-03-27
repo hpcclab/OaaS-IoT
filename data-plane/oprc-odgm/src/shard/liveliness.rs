@@ -67,9 +67,7 @@ impl MemberLivelinessState {
     ) -> Option<u64> {
         let id = sample
             .key_expr()
-            .split("/")
-            .skip(4)
-            .next()
+            .split("/").nth(4)
             .map(|id_str| id_str.parse::<u64>());
         if let Some(Ok(id)) = id {
             match sample.kind() {

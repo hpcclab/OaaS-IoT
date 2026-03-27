@@ -70,6 +70,24 @@ pub trait OdgmDataOps: Send + Sync {
         fn_id: &str,
         payload: Option<Vec<u8>>,
     ) -> Result<Option<Vec<u8>>, DataOpsError>;
+
+    /// Batch set multiple entries on an object.
+    async fn batch_set_values(
+        &self,
+        cls_id: &str,
+        partition_id: u32,
+        object_id: &str,
+        entries: Vec<(String, Vec<u8>)>,
+    ) -> Result<(), DataOpsError>;
+
+    /// Get all entries of an object as key-value pairs.
+    /// Returns None if the object doesn't exist.
+    async fn get_all_entries(
+        &self,
+        cls_id: &str,
+        partition_id: u32,
+        object_id: &str,
+    ) -> Result<Option<Vec<(String, Vec<u8>)>>, DataOpsError>;
 }
 
 /// Errors returned by data operations.
@@ -86,7 +104,7 @@ pub enum DataOpsError {
 }
 
 use wasmtime_wasi::ResourceTable;
-use wasmtime_wasi::p2::{IoView, WasiCtx, WasiView};
+use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 use wasmtime_wasi_http::{WasiHttpCtx, WasiHttpView};
 
 /// WASM host state — held in wasmtime::Store, providing data-access implementations.
@@ -100,21 +118,22 @@ pub struct WasmHostState {
     pub table: ResourceTable,
 }
 
-impl IoView for WasmHostState {
-    fn table(&mut self) -> &mut ResourceTable {
-        &mut self.table
-    }
-}
-
 impl WasiView for WasmHostState {
-    fn ctx(&mut self) -> &mut WasiCtx {
-        &mut self.ctx
+    fn ctx(&mut self) -> WasiCtxView<'_> {
+        WasiCtxView {
+            ctx: &mut self.ctx,
+            table: &mut self.table,
+        }
     }
 }
 
 impl WasiHttpView for WasmHostState {
     fn ctx(&mut self) -> &mut WasiHttpCtx {
         &mut self.http_ctx
+    }
+
+    fn table(&mut self) -> &mut ResourceTable {
+        &mut self.table
     }
 }
 

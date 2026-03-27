@@ -1,6 +1,8 @@
 pub mod artifact;
 pub mod compiler;
 pub mod deployment;
+#[cfg(feature = "network-sim")]
+pub mod netsim;
 pub mod package;
 pub mod script;
 pub mod validation;

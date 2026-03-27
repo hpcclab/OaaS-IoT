@@ -177,6 +177,14 @@ services:
       RUST_LOG: "debug,h2=warn"
 
 
+  pixel-canvas-frontend:
+    deploy:
+      replicas: 0
+    build:
+      context: .
+      dockerfile: tools/pixel-canvas/Dockerfile
+    image: ${IMAGE_PREFIX}/pixel-canvas-frontend:${IMAGE_VERSION}
+
   oprc-compiler:
     build:
       context: .

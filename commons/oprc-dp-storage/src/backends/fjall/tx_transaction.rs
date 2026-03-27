@@ -79,13 +79,13 @@ impl<'a> StorageTransaction for FjallTxTransaction<'a> {
         self.check_state()?;
 
         let bytes = value.as_slice();
-        self.write_tx.insert(&*self.keyspace, key, bytes);
+        self.write_tx.insert(&self.keyspace, key, bytes);
         Ok(())
     }
 
     async fn delete(&mut self, key: &[u8]) -> StorageResult<()> {
         self.check_state()?;
-        self.write_tx.remove(&*self.keyspace, key);
+        self.write_tx.remove(&self.keyspace, key);
         Ok(())
     }
 

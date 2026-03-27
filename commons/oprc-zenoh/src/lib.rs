@@ -55,6 +55,14 @@ pub struct OprcZenohConfig {
 
     #[envconfig(from = "OPRC_ZENOH_CONFIG")]
     pub json: Option<String>,
+
+    /// When `false`, the session pool will NOT register its listen ports in
+    /// the process-wide shared port list and will NOT auto-connect to ports
+    /// registered by other pools.  This allows running multiple isolated
+    /// Zenoh sessions in the same process (e.g. dev-server multi-env mode
+    /// with a TCP proxy between them).
+    #[envconfig(from = "OPRC_ZENOH_AUTO_CONNECT", default = "true")]
+    pub auto_connect: bool,
 }
 
 impl Default for OprcZenohConfig {
@@ -74,6 +82,7 @@ impl Default for OprcZenohConfig {
             default_query_timout: None,
             adminspace_enabled: None,
             json: None,
+            auto_connect: true,
         }
     }
 }

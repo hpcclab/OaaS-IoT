@@ -108,11 +108,9 @@ impl TopologySvc {
                         let b = caps.get(2).unwrap().as_str();
                         if let (Some(la), Some(lb)) =
                             (idx_to_label.get(a), idx_to_label.get(b))
-                        {
-                            if la != lb {
+                            && la != lb {
                                 edges.push((la.clone(), lb.clone()));
                             }
-                        }
                     }
                 }
             }
@@ -125,15 +123,14 @@ impl TopologySvc {
                     Ok(sample) => {
                         let key = sample.key_expr().as_str();
                         count += 1;
-                        if key.contains("/router/") {
-                            if let Some(rid) =
+                        if key.contains("/router/")
+                            && let Some(rid) =
                                 extract_segment(key, "@/", "router")
                             {
                                 routers.insert(rid);
                             }
-                        }
-                        if key.contains("/session/transport/unicast/") {
-                            if let Some(rid) = extract_after(
+                        if key.contains("/session/transport/unicast/")
+                            && let Some(rid) = extract_after(
                                 key,
                                 "/session/transport/unicast/",
                             ) {
@@ -167,9 +164,8 @@ impl TopologySvc {
                                     }
                                 }
                             }
-                        }
-                        if key.ends_with("/router/linkstate/routers") {
-                            if let Ok(s) = std::str::from_utf8(
+                        if key.ends_with("/router/linkstate/routers")
+                            && let Ok(s) = std::str::from_utf8(
                                 sample.payload().to_bytes().as_ref(),
                             ) {
                                 for (a, b) in parse_dot_router_edges(s) {
@@ -177,22 +173,18 @@ impl TopologySvc {
                                     linkstate_edges.insert((x, y));
                                 }
                             }
-                        }
-                        if key.contains("/router/route/successor/") {
-                            if let (Some(src), Some(dst)) = (
+                        if key.contains("/router/route/successor/")
+                            && let (Some(src), Some(dst)) = (
                                 extract_after(key, "/src/"),
                                 extract_after(key, "/dst/"),
-                            ) {
-                                if src != dst {
+                            )
+                                && src != dst {
                                     let (x, y) = order_pair(src, dst);
                                     successor_edges.insert((x, y));
                                 }
-                            }
-                        }
-                        if key.contains("/router/subscriber/")
-                            || key.contains("/router/queryable/")
-                        {
-                            if let Some(rid) =
+                        if (key.contains("/router/subscriber/")
+                            || key.contains("/router/queryable/"))
+                            && let Some(rid) =
                                 extract_segment(key, "@/", "router")
                             {
                                 let topic = extract_tail_after(
@@ -208,7 +200,7 @@ impl TopologySvc {
                                 if let Some(topic) = topic {
                                     let parts: Vec<&str> =
                                         topic.split('/').collect();
-                                    if parts.get(0) == Some(&"oprc") {
+                                    if parts.first() == Some(&"oprc") {
                                         let entry = roles_by_router
                                             .entry(rid)
                                             .or_insert(Roles {
@@ -236,9 +228,7 @@ impl TopologySvc {
                                                     (*fn_name).to_string(),
                                                 );
                                             }
-                                        } else if parts
-                                            .iter()
-                                            .any(|s| *s == "objects")
+                                        } else if parts.contains(&"objects")
                                         {
                                             entry.odgm_objects = true;
                                         } else {
@@ -247,7 +237,6 @@ impl TopologySvc {
                                     }
                                 }
                             }
-                        }
                     }
                     Err(_) => break,
                 },

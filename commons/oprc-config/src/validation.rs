@@ -19,13 +19,12 @@ impl Validate for ServerConfig {
             ));
         }
 
-        if let Some(workers) = self.workers {
-            if workers == 0 {
+        if let Some(workers) = self.workers
+            && workers == 0 {
                 return Err(ConfigError::ValidationError(
                     "Worker count cannot be 0".to_string(),
                 ));
             }
-        }
 
         Ok(())
     }

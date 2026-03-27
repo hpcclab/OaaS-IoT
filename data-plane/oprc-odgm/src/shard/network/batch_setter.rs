@@ -195,9 +195,9 @@ impl<R: ReplicationLayer + 'static> Handler<Query> for UnifiedBatchSetHandler<R>
 
         let expected_version = request.expected_object_version;
         let mutated = !set_entries.is_empty() || !delete_keys.is_empty();
-        if mutated {
-            if let Some(expected) = expected_version {
-                if metadata.object_version != expected {
+        if mutated
+            && let Some(expected) = expected_version
+                && metadata.object_version != expected {
                     if let Err(e) = query
                         .reply_err(ZBytes::from(format!(
                             "version mismatch: expected {}, got {}",
@@ -209,8 +209,6 @@ impl<R: ReplicationLayer + 'static> Handler<Query> for UnifiedBatchSetHandler<R>
                     }
                     return;
                 }
-            }
-        }
 
         let mut ops: Vec<Operation> = Vec::new();
         if !set_entries.is_empty() {
@@ -269,14 +267,13 @@ impl<R: ReplicationLayer + 'static> Handler<Query> for UnifiedBatchSetHandler<R>
             }));
         }
 
-        if !ops.is_empty() {
-            if let Err(err_msg) = self.replicate_write_operation(Operation::Batch(ops)).await {
+        if !ops.is_empty()
+            && let Err(err_msg) = self.replicate_write_operation(Operation::Batch(ops)).await {
                 if let Err(e) = query.reply_err(ZBytes::from(err_msg.clone())).await {
                     warn!("(shard={}) Failed to reply error for shard: {}", id, e);
                 }
                 return;
             }
-        }
 
         let payload = ZBytes::from(EmptyResponse::default().encode_to_vec());
         if let Err(e) = query.reply(query.key_expr(), payload).await {

@@ -199,15 +199,14 @@ impl DeploymentService {
         effective: &mut OClassDeployment,
         selected_envs: &[String],
     ) {
-        if let Some(odgm) = effective.odgm.as_mut() {
-            if odgm.env_node_ids.is_empty() {
+        if let Some(odgm) = effective.odgm.as_mut()
+            && odgm.env_node_ids.is_empty() {
                 for env in selected_envs {
                     // Generate node ids within u32 to avoid any potential JSON tooling issues with very large u64
                     let node_id: u64 = rand::random::<u32>() as u64;
                     odgm.env_node_ids.insert(env.clone(), vec![node_id]);
                 }
             }
-        }
     }
 
     async fn dispatch_units_with_retry(
@@ -277,11 +276,10 @@ impl DeploymentService {
         deployment_key: &str,
     ) -> Result<DeploymentId, PackageManagerError> {
         let total_clusters = effective.target_envs.len();
-        if successes.len() == total_clusters {
-            if let Some((_, id)) = successes.first() {
+        if successes.len() == total_clusters
+            && let Some((_, id)) = successes.first() {
                 return Ok(DeploymentId::from_string(id.clone()));
             }
-        }
         if successes.is_empty() {
             warn!(deployment=%deployment_key, "All cluster deployments failed");
             return Err(DeploymentError::Invalid(
@@ -402,8 +400,8 @@ impl DeploymentService {
             let mut overall_score: u8 = 0;
 
             for runtime_id in mappings.values() {
-                if let Some(summary) = runtime_map.get(runtime_id) {
-                    if let Some(status) = summary.status.as_ref() {
+                if let Some(summary) = runtime_map.get(runtime_id)
+                    && let Some(status) = summary.status.as_ref() {
                         let cond = Self::map_proto_condition(status.condition);
                         let score = Self::condition_severity(&cond);
                         if overall_cond.is_none() || score > overall_score {
@@ -411,7 +409,6 @@ impl DeploymentService {
                             overall_cond = Some(cond);
                         }
                     }
-                }
             }
 
             if let Some(cond) = overall_cond {

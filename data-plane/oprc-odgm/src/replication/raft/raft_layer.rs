@@ -118,7 +118,7 @@ impl ReplicationOperationManager {
 
     /// Execute a ShardRequest through OpenRaft consensus
     /// Simple approach: always try local first, let OpenRaft handle forwarding
-    #[instrument(skip_all, fields(operation = ?request.operation))]
+    #[instrument(skip_all)]
     pub async fn exec(
         &self,
         request: &ShardRequest,
@@ -220,6 +220,7 @@ pub struct OpenRaftReplicationLayer<A>
 where
     A: SnapshotCapableStorage + Clone + Send + Sync + 'static,
 {
+    #[allow(dead_code)]
     /// Node ID in the Raft cluster
     shard_id: u64,
 
@@ -364,7 +365,7 @@ where
         );
 
         Ok(Self {
-            shard_id: shard_id,
+            shard_id,
             shard_metadata,
             raft,
             store: app_storage,
@@ -443,20 +444,29 @@ where
         }
 
         debug!("Checking cluster initialization requirements");
-        // Initialize cluster if this is the primary node
+        // Initialize cluster only on the primary node to avoid race conditions.
+        // When multiple replicas exist, both nodes starting RPC services and
+        // then both calling raft.initialize() can race: the second node may
+        // receive Raft messages (votes/appends) before initialize(), leaving
+        // its state non-pristine and causing NotAllowed errors that kill the
+        // shard. Default to leader-only init when there are multiple replicas.
+        let has_multiple_replicas = self.shard_metadata.replica_owner.len() > 1;
         let init_leader_only = self
             .shard_metadata
             .options
             .get("raft_init_leader_only")
             .map(|v| v == "true")
-            .unwrap_or(false);
+            .unwrap_or(has_multiple_replicas);
 
-        if !init_leader_only
-            || self.shard_metadata.primary == Some(self.shard_id)
-        {
+        // Compare with shard_metadata.id (the actual shard ID), NOT
+        // self.shard_id (which is the owner/node ID). The `primary` field
+        // stores a shard_id from the assignment, not a node ID.
+        let is_primary_shard =
+            self.shard_metadata.primary == Some(self.shard_metadata.id);
+        if !init_leader_only || is_primary_shard {
             info!(
-                "shard '{}': initialize raft cluster",
-                self.shard_metadata.id
+                "shard '{}': initialize raft cluster (is_primary={})",
+                self.shard_metadata.id, is_primary_shard
             );
             let mut members = BTreeMap::new();
             // Use replica_owner (node IDs) for Raft membership
@@ -470,19 +480,32 @@ where
             }
 
             if let Err(e) = self.raft.initialize(members).await {
-                warn!(
-                    "shard '{}': error initiating raft: {:?}",
-                    self.shard_metadata.id, e
-                );
-                return Err(ReplicationError::ConsensusError(format!(
-                    "Failed to initialize cluster: {}",
-                    e
-                )));
+                if is_primary_shard {
+                    // Primary node MUST initialize successfully
+                    warn!(
+                        "shard '{}': primary failed to initialize raft: {:?}",
+                        self.shard_metadata.id, e
+                    );
+                    return Err(ReplicationError::ConsensusError(format!(
+                        "Failed to initialize cluster: {}",
+                        e
+                    )));
+                } else {
+                    // Non-primary: cluster may already be initialized by the
+                    // primary. This node will join as a follower when the
+                    // leader sends AppendEntries.
+                    info!(
+                        "shard '{}': raft already initialized by another node, joining as follower: {:?}",
+                        self.shard_metadata.id, e
+                    );
+                }
             } else {
                 info!("Raft cluster initialized successfully");
             }
         } else {
-            debug!("Skipping cluster initialization (not primary node)");
+            debug!(
+                "Skipping cluster initialization (not primary node, will join as follower)"
+            );
         }
 
         info!("OpenRaft cluster initialization complete");
@@ -523,7 +546,7 @@ where
         }
     }
 
-    #[instrument(skip_all, fields(shard_id = %self.shard_metadata.id, collection = %self.shard_metadata.collection, partition_id = %self.shard_metadata.partition_id, operation = ?request.operation))]
+    #[instrument(skip_all, fields(shard_id = %self.shard_metadata.id, collection = %self.shard_metadata.collection, partition_id = %self.shard_metadata.partition_id), level = tracing::Level::DEBUG)]
     async fn replicate_write(
         &self,
         request: ShardRequest,
@@ -535,7 +558,7 @@ where
         operation_manager.exec(&request).await
     }
 
-    #[instrument(skip_all, fields(shard_id = %self.shard_metadata.id, collection = %self.shard_metadata.collection, partition_id = %self.shard_metadata.partition_id, operation = ?request.operation))]
+    #[instrument(skip_all, fields(shard_id = %self.shard_metadata.id, collection = %self.shard_metadata.collection, partition_id = %self.shard_metadata.partition_id))]
     async fn replicate_read(
         &self,
         request: ShardRequest,

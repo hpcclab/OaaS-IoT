@@ -133,6 +133,18 @@ where
         key: &str,
         value: ObjectVal,
     ) -> Result<(), ShardError> {
+        // Capture raw data bytes before encoding if value inclusion is enabled
+        let include_values = self
+            .metadata
+            .options
+            .get("ws_event_include_values")
+            .is_some_and(|v| v == "true");
+        let raw_data = if include_values {
+            Some(value.data.clone())
+        } else {
+            None
+        };
+
         // Encode raw ObjectVal (granular storage stores individual entry values only)
         let value_bytes = postcard::to_allocvec(&value)
             .map_err(|e| ShardError::SerializationError(e.to_string()))?;
@@ -197,6 +209,7 @@ where
                 vec![ChangedKey {
                     key_canonical: key.to_string(),
                     action,
+                    value: raw_data,
                 }],
             )
             .with_event_config(event_cfg);
@@ -260,6 +273,7 @@ where
                 vec![ChangedKey {
                     key_canonical: key.to_string(),
                     action: MutAction::Delete,
+                    value: None,
                 }],
             );
             if let Some(v2) = &self.v2_dispatcher {
@@ -403,7 +417,7 @@ where
                                                 }
                                                 _ => storage_cursor
                                                     .as_ref()
-                                                    .map_or(false, |cursor_key| {
+                                                    .is_some_and(|cursor_key| {
                                                         match parse_granular_key(
                                                             cursor_key.as_slice(),
                                                         ) {
@@ -415,7 +429,7 @@ where
                                                     }),
                                             }
                                         } else {
-                                            storage_cursor.as_ref().map_or(false, |cursor_key| {
+                                            storage_cursor.as_ref().is_some_and(|cursor_key| {
                                                 match parse_granular_key(cursor_key.as_slice()) {
                                                     Some((ref next_obj, GranularRecord::Entry(next_entry)))
                                                         if next_obj == normalized_id
@@ -499,13 +513,13 @@ where
         let version_before_batch = metadata.object_version;
 
         // Check expected version for CAS
-        if let Some(expected) = expected_version {
-            if metadata.object_version != expected {
-                return Err(ShardError::VersionMismatch {
-                    expected,
-                    actual: metadata.object_version,
-                });
-            }
+        if let Some(expected) = expected_version
+            && metadata.object_version != expected
+        {
+            return Err(ShardError::VersionMismatch {
+                expected,
+                actual: metadata.object_version,
+            });
         }
 
         // Increment version once for the entire batch
@@ -516,6 +530,11 @@ where
         let changed_keys: Vec<String> = values.keys().cloned().collect();
         // Prefer capability-based gating over env: if a V2 dispatcher exists, use it.
         let v2_mode = self.v2_dispatcher.is_some();
+        let include_values = self
+            .metadata
+            .options
+            .get("ws_event_include_values")
+            .is_some_and(|v| v == "true");
         let mut pre_exist: HashMap<String, bool> = HashMap::new();
         if v2_mode {
             for k in &changed_keys {
@@ -529,36 +548,47 @@ where
             }
         }
 
-        // Write all entries (note: this is simplified - in production, we'd want
-        // to batch these into a single Raft log entry for true atomicity)
-        tracing::info!(
-            "Batch set entries: writing {} entries for {}",
-            values.len(),
-            normalized_id
-        );
+        // Capture raw data bytes per key for event values (before consuming `values`)
+        let mut raw_data_map: HashMap<String, Vec<u8>> = HashMap::new();
+        if v2_mode && include_values {
+            for (k, v) in &values {
+                raw_data_map.insert(k.clone(), v.data.clone());
+            }
+        }
+
+        // Batch all entry writes + metadata update into a single Raft log entry
+        // for atomicity and performance.
+        let mut ops: Vec<Operation> = Vec::with_capacity(values.len() + 1);
         for (key, value) in values.into_iter() {
             let storage_key = build_entry_key(normalized_id, &key);
-            // Encode each ObjectVal directly
             let value_bytes = postcard::to_allocvec(&value)
                 .map_err(|e| ShardError::SerializationError(e.to_string()))?;
 
-            let operation = Operation::Write(WriteOperation {
+            ops.push(Operation::Write(WriteOperation {
                 key: StorageValue::from(storage_key),
                 value: StorageValue::from(value_bytes),
                 ..Default::default()
-            });
-            let request = ShardRequest::from_operation(operation, 0); // TODO: Get proper node_id
-
-            self.replication
-                .replicate_write(request)
-                .await
-                .map_err(ShardError::from)?;
-
-            self.metrics.inc_entry_writes();
+            }));
         }
 
-        // Update metadata with new version
-        self.set_metadata(normalized_id, metadata).await?;
+        // Include metadata update in the same batch
+        let metadata_key = build_metadata_key(normalized_id);
+        let metadata_bytes = metadata.to_bytes();
+        ops.push(Operation::Write(WriteOperation {
+            key: StorageValue::from(metadata_key),
+            value: StorageValue::from(metadata_bytes),
+            ..Default::default()
+        }));
+
+        let request = ShardRequest::from_operation(Operation::Batch(ops), 0);
+        self.replication
+            .replicate_write(request)
+            .await
+            .map_err(ShardError::from)?;
+
+        self.metrics.inc_entry_writes_by(changed_keys.len() as u64);
+
+        // Metadata was already written as part of the batch above.
 
         debug!("Batch set completed with new version {}", new_version);
         if v2_mode {
@@ -573,6 +603,7 @@ where
                     } else {
                         MutAction::Create
                     },
+                    value: raw_data_map.remove(k),
                 });
             }
             let event_cfg = {
@@ -613,7 +644,7 @@ where
         let mut actually_deleted: Vec<String> = Vec::new();
 
         for key in &keys {
-            let storage_key = build_entry_key(normalized_id, &key);
+            let storage_key = build_entry_key(normalized_id, key);
 
             // Check if exists
             let exists = self
@@ -654,6 +685,7 @@ where
                     .map(|k| ChangedKey {
                         key_canonical: k.clone(),
                         action: MutAction::Delete,
+                        value: None,
                     })
                     .collect();
                 if !changed.is_empty() {

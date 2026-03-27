@@ -262,11 +262,10 @@ impl<E: EventManager + Send + Sync + 'static> InvocationNetworkManager<E> {
             self.queryable_table.keys().cloned().collect();
 
         for fn_id in all_fn.iter() {
-            if let Some(queryable) = self.queryable_table.remove(fn_id) {
-                if let Err(e) = queryable.undeclare().await {
+            if let Some(queryable) = self.queryable_table.remove(fn_id)
+                && let Err(e) = queryable.undeclare().await {
                     tracing::warn!("Failed to undeclare queryable: {:?}", e);
                 };
-            }
         }
 
         // Stop all asynchronous invocation subscribers
@@ -276,14 +275,12 @@ impl<E: EventManager + Send + Sync + 'static> InvocationNetworkManager<E> {
         for async_key in all_async_keys.iter() {
             if let Some(subscriber) =
                 self.async_subscriber_table.remove(async_key)
-            {
-                if let Err(e) = subscriber.undeclare().await {
+                && let Err(e) = subscriber.undeclare().await {
                     tracing::warn!(
                         "Failed to undeclare async subscriber: {:?}",
                         e
                     );
                 };
-            }
         }
     }
 }

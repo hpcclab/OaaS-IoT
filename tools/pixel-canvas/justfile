@@ -1,0 +1,12 @@
+
+
+build:
+    npm run build
+
+
+install:
+    npm install
+    cd wasm-guest; npm install
+
+wasm-push:
+    oras push harbor.129-114-108-168.nip.io/oaas/pixel-canvas-wasm:latest wasm-guest/dist/pixel-canvas-wasm.wasm:application/wasm

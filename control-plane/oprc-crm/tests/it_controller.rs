@@ -246,6 +246,7 @@ async fn controller_deletion_cleans_children_and_finalizer() {
                 memory_limit: None,
                 min_scale: Some(1),
                 max_scale: None,
+                wasm_fuel: None,
             }),
             config: std::collections::HashMap::new(),
         }],

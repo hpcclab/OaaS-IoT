@@ -19,11 +19,23 @@ pub struct MemoryDeploymentStorage {
     cluster_mappings: Arc<RwLock<HashMap<String, HashMap<String, String>>>>,
 }
 
+impl Default for MemoryPackageStorage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MemoryPackageStorage {
     pub fn new() -> Self {
         Self {
             store: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+}
+
+impl Default for MemoryDeploymentStorage {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -58,17 +70,15 @@ impl PackageStorage for MemoryPackageStorage {
             .values()
             .filter(|package| {
                 // Apply filters
-                if let Some(ref pattern) = filter.name_pattern {
-                    if !package.name.contains(pattern) {
+                if let Some(ref pattern) = filter.name_pattern
+                    && !package.name.contains(pattern) {
                         return false;
                     }
-                }
 
-                if let Some(ref author) = filter.author {
-                    if package.metadata.author.as_deref() != Some(author) {
+                if let Some(ref author) = filter.author
+                    && package.metadata.author.as_deref() != Some(author) {
                         return false;
                     }
-                }
 
                 if !filter.tags.is_empty() {
                     let has_matching_tag = filter
@@ -135,23 +145,20 @@ impl DeploymentStorage for MemoryDeploymentStorage {
         let deployments: Vec<OClassDeployment> = store
             .values()
             .filter(|deployment| {
-                if let Some(ref package_name) = filter.package_name {
-                    if deployment.package_name != *package_name {
+                if let Some(ref package_name) = filter.package_name
+                    && deployment.package_name != *package_name {
                         return false;
                     }
-                }
 
-                if let Some(ref class_key) = filter.class_key {
-                    if deployment.class_key != *class_key {
+                if let Some(ref class_key) = filter.class_key
+                    && deployment.class_key != *class_key {
                         return false;
                     }
-                }
 
-                if let Some(ref target_env) = filter.target_env {
-                    if !deployment.target_envs.contains(target_env) {
+                if let Some(ref target_env) = filter.target_env
+                    && !deployment.target_envs.contains(target_env) {
                         return false;
                     }
-                }
 
                 true
             })

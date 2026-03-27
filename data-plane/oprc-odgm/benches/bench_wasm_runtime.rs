@@ -77,7 +77,6 @@ fn read_ts_guest_bytes_sync() -> Option<Vec<u8>> {
 
 fn wasm_engine() -> Engine {
     let mut config = wasmtime::Config::new();
-    config.async_support(true);
     config.wasm_component_model(true);
     config.consume_fuel(true);
     Engine::new(&config).expect("failed to create wasmtime engine")
@@ -239,6 +238,7 @@ fn bench_invoke_fn_echo(c: &mut Criterion) {
                                 payload,
                                 data_ops,
                                 Some(&ctx),
+                                1_000_000_000,
                             )
                             .await
                             .expect("invoke_fn echo");
@@ -304,6 +304,7 @@ fn bench_invoke_obj_transform(c: &mut Criterion) {
                                 None,
                                 data_ops,
                                 Some(&ctx),
+                                1_000_000_000,
                             )
                             .await
                             .expect("invoke_obj transform");
@@ -356,6 +357,7 @@ fn bench_ts_invoke_fn_echo(c: &mut Criterion) {
                                 payload,
                                 data_ops,
                                 Some(&ctx),
+                                1_000_000_000,
                             )
                             .await
                             .expect("ts invoke_fn echo");
@@ -448,6 +450,7 @@ fn bench_ts_invoke_obj_increment(c: &mut Criterion) {
                                 payload,
                                 data_ops,
                                 Some(&ctx),
+                                1_000_000_000,
                             )
                             .await
                             .expect("ts invoke_obj increment");

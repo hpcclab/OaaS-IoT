@@ -68,6 +68,9 @@ config:
         retry_attempts: 5
     defaultCluster: "oaas-1"
 
+  networkSim:
+    enabled: true
+
 # Enable embedded etcd managed by the PM chart
 embeddedEtcd:
   enabled: true

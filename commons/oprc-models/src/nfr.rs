@@ -7,6 +7,7 @@ use validator::Validate;
 )]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
+#[derive(Default)]
 pub struct NfrRequirements {
     #[validate(range(
         min = 1,
@@ -25,16 +26,6 @@ pub struct NfrRequirements {
         message = "CPU utilization target must be between 0 and 1"
     ))]
     pub cpu_utilization_target: Option<f64>,
-}
-
-impl Default for NfrRequirements {
-    fn default() -> Self {
-        Self {
-            min_throughput_rps: None,
-            availability: None,
-            cpu_utilization_target: None,
-        }
-    }
 }
 
 #[derive(
@@ -58,6 +49,7 @@ pub struct QosRequirement {
 )]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
+#[derive(Default)]
 pub struct ProvisionConfig {
     /// Explicit container image for the function runtime (required upstream when deploying)
     /// If None, deployment controllers will reject the spec instead of applying fallbacks.
@@ -78,24 +70,9 @@ pub struct ProvisionConfig {
     pub memory_limit: Option<String>,
     pub min_scale: Option<u32>, // Minimum scale for autoscaling
     pub max_scale: Option<u32>, // Maximum scale for autoscaling
-}
-
-impl Default for ProvisionConfig {
-    fn default() -> Self {
-        Self {
-            container_image: None,
-            wasm_module_url: None,
-            port: None,
-            need_http2: false,
-            max_concurrency: 0, // No limit by default
-            cpu_request: None,
-            memory_request: None,
-            cpu_limit: None,
-            memory_limit: None,
-            min_scale: None,
-            max_scale: None,
-        }
-    }
+    /// Maximum WASM fuel consumed per invocation. None uses the runtime default (1_000_000_000).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wasm_fuel: Option<u64>,
 }
 
 #[cfg(test)]

@@ -8,6 +8,7 @@ use oprc_grpc::oprc_function_server::OprcFunctionServer;
 use oprc_invoke::proxy::ObjectProxy;
 use std::time::Duration;
 use tonic::service::Routes;
+use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
 // Re-export from oprc_observability for backward compatibility
@@ -17,6 +18,7 @@ pub use oprc_observability::{
 
 mod grpc;
 mod rest;
+pub mod ws;
 
 /// Initialize OTEL metrics for the gateway service.
 pub fn init_otel_metrics() -> OtelMetrics {
@@ -26,8 +28,9 @@ pub fn init_otel_metrics() -> OtelMetrics {
 pub fn build_router(
     z_session: zenoh::Session,
     request_timeout: Duration,
+    ws_enabled: bool,
 ) -> Router {
-    let object_proxy = ObjectProxy::new(z_session);
+    let object_proxy = ObjectProxy::new(z_session.clone());
     let server = OprcFunctionServer::new(InvocationHandler::new(
         object_proxy.clone(),
         request_timeout,
@@ -51,7 +54,7 @@ pub fn build_router(
         .add_service(data_server)
         .add_service(reflection_server_v1a)
         .add_service(reflection_server_v1);
-    route_builder
+    let mut router = route_builder
         .routes()
         .into_axum_router()
         .route("/health", get(health))
@@ -68,14 +71,29 @@ pub fn build_router(
             "/api/class/{cls}/{pid}/objects/{oid}",
             delete(rest::del_obj),
         )
-        .route("/api/class/{cls}/{pid}/objects", get(rest::list_objects))
-        .route("/{*path}", get(no_found))
-        .route("/", get(no_found))
+        .route("/api/class/{cls}/{pid}/objects", get(rest::list_objects));
+
+    // Register WebSocket routes when enabled
+    if ws_enabled {
+        tracing::info!("WebSocket event routes enabled");
+        router = router
+            .route(
+                "/api/class/{cls}/{pid}/objects/{oid}/ws",
+                get(ws::ws_object_handler),
+            )
+            .route("/api/class/{cls}/{pid}/ws", get(ws::ws_partition_handler))
+            .route("/api/class/{cls}/ws", get(ws::ws_class_handler))
+            .layer(Extension(z_session));
+    }
+
+    router
+        .fallback(get(no_found))
         .layer(Extension(object_proxy))
         .layer(Extension(request_timeout))
         .layer(Extension(0u32))
         .layer(Extension(Duration::from_millis(25)))
         .layer(TraceLayer::new_for_http())
+        .layer(CorsLayer::permissive())
 }
 
 use axum::response::IntoResponse;

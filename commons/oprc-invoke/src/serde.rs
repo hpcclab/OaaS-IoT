@@ -14,5 +14,5 @@ pub fn encode<M>(m: &M) -> ZBytes
 where
     M: Message,
 {
-    ZBytes::from(M::encode_to_vec(&m))
+    ZBytes::from(M::encode_to_vec(m))
 }

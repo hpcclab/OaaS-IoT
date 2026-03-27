@@ -7,6 +7,16 @@ repository.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+
+[[bin]]
+name = "oprc-cli"
+path = "src/main.rs"
+
+[[bin]]
+name = "ocli"
+path = "src/main.rs"
+
+
 [dependencies]
 anyhow = { workspace = true }
 thiserror = { workspace = true }
@@ -35,6 +45,14 @@ oprc-grpc = { workspace = true, features = ["util"] }
 base64 = { workspace = true }
 tokio-stream = { workspace = true }
 regex = { workspace = true }
+
+# Dev server (optional)
+oprc-dev-server = { workspace = true, optional = true }
+
+[features]
+default = ["dev-server"]
+dev-server = ["dep:oprc-dev-server"]
+frontend = ["oprc-dev-server/frontend"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -7,15 +7,20 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::{
-    events::{EventConfig, EventManagerImpl, TriggerProcessor, V2Dispatcher, V2DispatcherRef},
+    events::{
+        EventConfig, EventDispatcher, EventDispatcherRef, EventManagerImpl,
+        TriggerProcessor,
+    },
     replication::{
+        ReplicationLayer,
         mst::{MstConfig, MstReplicationLayer},
         no_replication::NoReplication,
         raft::OpenRaftReplicationLayer,
-        ReplicationLayer,
     },
 };
-use oprc_dp_storage::{AnyStorage, ApplicationDataStorage, StorageConfig, StorageValue};
+use oprc_dp_storage::{
+    AnyStorage, ApplicationDataStorage, StorageConfig, StorageValue,
+};
 use oprc_zenoh::pool::Pool;
 
 use super::object_shard::ObjectUnifiedShard;
@@ -34,7 +39,10 @@ pub struct ShardOptions {
 }
 
 impl ShardOptions {
-    pub fn new(max_string_id_len: usize, granular_prefetch_limit: usize) -> Self {
+    pub fn new(
+        max_string_id_len: usize,
+        granular_prefetch_limit: usize,
+    ) -> Self {
         Self {
             max_string_id_len,
             granular_prefetch_limit,
@@ -48,6 +56,20 @@ pub struct EventPipelineConfig {
     pub enabled: bool,
     pub queue_bound: usize,
     pub broadcast_bound: usize,
+    /// When true, MST sync writes emit `MutationSource::Sync` events.
+    /// Disabled by default to avoid overhead for deployments that do not consume sync events.
+    pub mst_sync_events: bool,
+    /// When true, processed events are published to Zenoh
+    /// for consumption by Gateway WebSocket handlers.
+    pub zenoh_event_publish: bool,
+    /// Zenoh locality for event publishing.
+    /// Controls whether events stay in-process (`SessionLocal`), go to remote
+    /// peers only (`Remote`), or both (`Any`). Default: `Remote`.
+    pub zenoh_event_locality: zenoh::sample::Locality,
+    /// When true, `ChangedKey.value` is populated with the raw entry bytes
+    /// for create/update mutations, allowing WS consumers to apply deltas
+    /// without fetching the full object.
+    pub include_entry_values: bool,
 }
 
 impl Default for EventPipelineConfig {
@@ -58,22 +80,43 @@ impl Default for EventPipelineConfig {
 
 impl EventPipelineConfig {
     pub fn from_env() -> Self {
-        let enabled = std::env::var("ODGM_EVENT_PIPELINE_V2")
+        let enabled = std::env::var("ODGM_EVENT_PIPELINE_ENABLED")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(true);
         let queue_bound = std::env::var("ODGM_EVENT_QUEUE_BOUND")
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(1024);
+            .unwrap_or(8192);
         let broadcast_bound = std::env::var("ODGM_EVENT_BCAST_BOUND")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(256);
+        let mst_sync_events = std::env::var("ODGM_MST_SYNC_EVENTS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(false);
+        let zenoh_event_publish = std::env::var("ODGM_ZENOH_EVENT_PUBLISH")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(false);
+        let zenoh_event_locality =
+            match std::env::var("ODGM_ZENOH_EVENT_LOCALITY").ok().as_deref() {
+                Some("session_local") => zenoh::sample::Locality::SessionLocal,
+                Some("any") => zenoh::sample::Locality::Any,
+                _ => zenoh::sample::Locality::Remote,
+            };
         Self {
             enabled,
             queue_bound,
             broadcast_bound,
+            mst_sync_events,
+            zenoh_event_publish,
+            zenoh_event_locality,
+            include_entry_values: std::env::var("ODGM_EVENT_INCLUDE_VALUES")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(false),
         }
     }
 
@@ -82,6 +125,58 @@ impl EventPipelineConfig {
             enabled: false,
             queue_bound: 0,
             broadcast_bound: 0,
+            mst_sync_events: false,
+            zenoh_event_publish: false,
+            zenoh_event_locality: zenoh::sample::Locality::Remote,
+            include_entry_values: false,
+        }
+    }
+
+    /// Return a config equivalent to `from_env()` but with Zenoh event
+    /// publishing enabled and locality set to `SessionLocal`.
+    /// Intended for in-process deployments (e.g. dev server) where ODGM and
+    /// the Gateway WebSocket bridge share the same Zenoh session.
+    pub fn with_local_publish() -> Self {
+        Self {
+            zenoh_event_publish: true,
+            zenoh_event_locality: zenoh::sample::Locality::SessionLocal,
+            mst_sync_events: true,
+            ..Self::from_env()
+        }
+    }
+
+    /// Override fields from collection-level options in `ShardMetadata.options`.
+    ///
+    /// Recognised keys:
+    /// - `zenoh_event_publish` → `self.zenoh_event_publish`
+    /// - `zenoh_event_locality` → `self.zenoh_event_locality`
+    /// - `ws_event_include_values` → `self.include_entry_values`
+    pub fn apply_metadata_overrides(
+        &mut self,
+        opts: &std::collections::HashMap<String, String>,
+    ) {
+        if let Some(v) = opts.get("zenoh_event_publish") {
+            if let Ok(b) = v.parse::<bool>() {
+                self.zenoh_event_publish = b;
+            }
+        }
+        if let Some(v) = opts.get("zenoh_event_locality") {
+            self.zenoh_event_locality = match v.as_str() {
+                "session_local" => zenoh::sample::Locality::SessionLocal,
+                "any" => zenoh::sample::Locality::Any,
+                "remote" => zenoh::sample::Locality::Remote,
+                _ => self.zenoh_event_locality,
+            };
+        }
+        if let Some(v) = opts.get("ws_event_include_values") {
+            if let Ok(b) = v.parse::<bool>() {
+                self.include_entry_values = b;
+            }
+        }
+        if let Some(v) = opts.get("mst_sync_events") {
+            if let Ok(b) = v.parse::<bool>() {
+                self.mst_sync_events = b;
+            }
         }
     }
 }
@@ -150,7 +245,10 @@ impl<S, R> ShardBuilder<S, R> {
     }
 
     /// Set V2 event pipeline configuration.
-    pub fn event_pipeline_config(mut self, config: EventPipelineConfig) -> Self {
+    pub fn event_pipeline_config(
+        mut self,
+        config: EventPipelineConfig,
+    ) -> Self {
         self.event_pipeline_config = config;
         self
     }
@@ -159,7 +257,10 @@ impl<S, R> ShardBuilder<S, R> {
 // Type-state transitions for storage
 impl<R> ShardBuilder<(), R> {
     /// Set the storage backend (type-state transition).
-    pub fn storage<S: ApplicationDataStorage>(self, storage: S) -> ShardBuilder<S, R> {
+    pub fn storage<S: ApplicationDataStorage>(
+        self,
+        storage: S,
+    ) -> ShardBuilder<S, R> {
         ShardBuilder {
             metadata: self.metadata,
             storage,
@@ -172,7 +273,9 @@ impl<R> ShardBuilder<(), R> {
     }
 
     /// Use default in-memory storage.
-    pub fn memory_storage(self) -> Result<ShardBuilder<AnyStorage, R>, ShardError> {
+    pub fn memory_storage(
+        self,
+    ) -> Result<ShardBuilder<AnyStorage, R>, ShardError> {
         let storage = StorageConfig::skiplist()
             .open_any()
             .map_err(ShardError::StorageError)?;
@@ -207,19 +310,57 @@ impl<S: ApplicationDataStorage + Clone> ShardBuilder<S, ()> {
 
 impl ShardBuilder<AnyStorage, ()> {
     /// Use MST replication (requires metadata and session).
-    pub fn mst_replication(self) -> Result<ShardBuilder<AnyStorage, MstReplicationLayer<AnyStorage, StorageValue>>, ShardError> {
-        let metadata = self.metadata.as_ref()
-            .ok_or_else(|| ShardError::ConfigurationError("Metadata required for MST replication".into()))?;
-        let session = self.session.as_ref()
-            .ok_or_else(|| ShardError::ConfigurationError("Session required for MST replication".into()))?;
+    pub fn mst_replication(
+        self,
+    ) -> Result<
+        ShardBuilder<AnyStorage, MstReplicationLayer<AnyStorage, StorageValue>>,
+        ShardError,
+    > {
+        let metadata = self.metadata.as_ref().ok_or_else(|| {
+            ShardError::ConfigurationError(
+                "Metadata required for MST replication".into(),
+            )
+        })?;
+        let session = self.session.as_ref().ok_or_else(|| {
+            ShardError::ConfigurationError(
+                "Session required for MST replication".into(),
+            )
+        })?;
 
         let mst_config = default_mst_config();
-        let replication = MstReplicationLayer::new(
+
+        // Apply class-level overrides before building the dispatcher.
+        let mut epc = self.event_pipeline_config.clone();
+        epc.apply_metadata_overrides(&metadata.options);
+
+        // If MST sync events are enabled, build the V2 dispatcher now so the
+        // MST networking layer can emit MutationSource::Sync events.
+        // Sync events use SessionLocal locality: they only need to reach the
+        // co-located Gateway WS handler — the remote node runs its own sync
+        // and emits its own events, so publishing remotely would cause
+        // duplicate events on the other side.
+        let v2_for_mst = if epc.enabled && epc.mst_sync_events {
+            let mut sync_epc = epc.clone();
+            sync_epc.zenoh_event_locality =
+                zenoh::sample::Locality::SessionLocal;
+            Some(build_event_dispatcher(
+                session,
+                &self.event_config,
+                &sync_epc,
+            ))
+        } else {
+            None
+        }
+        .flatten();
+
+        let replication = MstReplicationLayer::new_with_dispatcher(
             self.storage.clone(),
             metadata.owner.unwrap_or_default(),
             metadata.clone(),
             mst_config,
             session.clone(),
+            v2_for_mst,
+            epc.include_entry_values,
         );
 
         Ok(ShardBuilder {
@@ -234,14 +375,26 @@ impl ShardBuilder<AnyStorage, ()> {
     }
 
     /// Use Raft replication (requires metadata and session).
-    pub async fn raft_replication(self) -> Result<ShardBuilder<AnyStorage, OpenRaftReplicationLayer<AnyStorage>>, ShardError> {
-        let metadata = self.metadata.as_ref()
-            .ok_or_else(|| ShardError::ConfigurationError("Metadata required for Raft replication".into()))?;
-        let session = self.session.as_ref()
-            .ok_or_else(|| ShardError::ConfigurationError("Session required for Raft replication".into()))?;
+    pub async fn raft_replication(
+        self,
+    ) -> Result<
+        ShardBuilder<AnyStorage, OpenRaftReplicationLayer<AnyStorage>>,
+        ShardError,
+    > {
+        let metadata = self.metadata.as_ref().ok_or_else(|| {
+            ShardError::ConfigurationError(
+                "Metadata required for Raft replication".into(),
+            )
+        })?;
+        let session = self.session.as_ref().ok_or_else(|| {
+            ShardError::ConfigurationError(
+                "Session required for Raft replication".into(),
+            )
+        })?;
 
         let node_id = metadata.owner.unwrap_or(metadata.id);
-        let prefix = format!("oprc/{}/{}", metadata.collection, metadata.partition_id);
+        let prefix =
+            format!("oprc/{}/{}", metadata.collection, metadata.partition_id);
 
         let replication = OpenRaftReplicationLayer::new(
             node_id,
@@ -271,9 +424,12 @@ where
     R: ReplicationLayer + 'static,
 {
     /// Build a minimal shard without networking (for testing).
-    pub async fn build_minimal(self) -> Result<ObjectUnifiedShard<S, R, EventManagerImpl<S>>, ShardError> {
-        let metadata = self.metadata
-            .ok_or_else(|| ShardError::ConfigurationError("Metadata is required".into()))?;
+    pub async fn build_minimal(
+        self,
+    ) -> Result<ObjectUnifiedShard<S, R, EventManagerImpl<S>>, ShardError> {
+        let metadata = self.metadata.ok_or_else(|| {
+            ShardError::ConfigurationError("Metadata is required".into())
+        })?;
 
         info!("Building minimal shard: {:?}", &metadata);
 
@@ -281,26 +437,43 @@ where
             metadata,
             self.storage,
             self.replication,
-            self.options.into(),
+            self.options,
         )
         .await
     }
 
     /// Build a full shard with networking.
-    pub async fn build(self) -> Result<ObjectUnifiedShard<S, R, EventManagerImpl<S>>, ShardError> {
-        let metadata = self.metadata
-            .ok_or_else(|| ShardError::ConfigurationError("Metadata is required".into()))?;
-        let session = self.session
-            .ok_or_else(|| ShardError::ConfigurationError("Session is required for full shard".into()))?;
+    pub async fn build(
+        self,
+    ) -> Result<ObjectUnifiedShard<S, R, EventManagerImpl<S>>, ShardError> {
+        let metadata = self.metadata.ok_or_else(|| {
+            ShardError::ConfigurationError("Metadata is required".into())
+        })?;
+        let session = self.session.ok_or_else(|| {
+            ShardError::ConfigurationError(
+                "Session is required for full shard".into(),
+            )
+        })?;
 
         info!("Building networked shard: {:?}", &metadata);
 
+        // Apply class-level overrides before building the dispatcher.
+        let mut epc = self.event_pipeline_config;
+        epc.apply_metadata_overrides(&metadata.options);
+
         let event_manager = self.event_config.as_ref().map(|config| {
-            let trigger_processor = Arc::new(TriggerProcessor::new(session.clone(), config.clone()));
-            Arc::new(EventManagerImpl::new(trigger_processor, self.storage.clone()))
+            let trigger_processor = Arc::new(TriggerProcessor::new(
+                session.clone(),
+                config.clone(),
+            ));
+            Arc::new(EventManagerImpl::new(
+                trigger_processor,
+                self.storage.clone(),
+            ))
         });
 
-        let v2_dispatcher = build_event_dispatcher(&session, &self.event_config, &self.event_pipeline_config);
+        let v2_dispatcher =
+            build_event_dispatcher(&session, &self.event_config, &epc);
 
         ObjectUnifiedShard::new_full(
             metadata,
@@ -308,7 +481,7 @@ where
             self.replication,
             session,
             event_manager,
-            self.options.into(),
+            self.options,
             v2_dispatcher,
         )
         .await
@@ -337,9 +510,16 @@ pub trait ShardConstructors: Sized {
 }
 
 impl ShardConstructors
-    for ObjectUnifiedShard<AnyStorage, NoReplication<AnyStorage>, EventManagerImpl<AnyStorage>>
+    for ObjectUnifiedShard<
+        AnyStorage,
+        NoReplication<AnyStorage>,
+        EventManagerImpl<AnyStorage>,
+    >
 {
-    async fn basic_memory(metadata: ShardMetadata, options: ShardOptions) -> Result<Self, ShardError> {
+    async fn basic_memory(
+        metadata: ShardMetadata,
+        options: ShardOptions,
+    ) -> Result<Self, ShardError> {
         ShardBuilder::new()
             .metadata(metadata)
             .options(options)
@@ -374,6 +554,36 @@ impl ShardConstructors
 // Dynamic dispatch helper (for runtime shard type selection)
 // ============================================================================
 
+/// Open a storage backend based on the `storage_backend` and `storage_path`
+/// keys in `metadata.options`. Falls back to in-memory SkipList when unset.
+///
+/// For Fjall, the shard ID is appended to the base path so that each shard
+/// gets its own exclusive database directory (fjall holds a file lock per
+/// directory and will return `Locked` if two shards share a path).
+///
+/// Recognised `storage_backend` values: `"fjall"`, `"memory"` (default).
+fn open_storage_from_options(
+    options: &std::collections::HashMap<String, String>,
+    shard_id: u64,
+) -> Result<AnyStorage, ShardError> {
+    match options.get("storage_backend").map(|s| s.as_str()) {
+        Some("fjall") => {
+            let base = options
+                .get("storage_path")
+                .map(|s| s.as_str())
+                .unwrap_or("/data/odgm/default");
+            // Each shard owns a unique sub-directory to avoid the fjall file lock.
+            let path = format!("{}/{}", base.trim_end_matches('/'), shard_id);
+            StorageConfig::fjall(path)
+                .open_any()
+                .map_err(ShardError::StorageError)
+        }
+        _ => StorageConfig::skiplist()
+            .open_any()
+            .map_err(ShardError::StorageError),
+    }
+}
+
 /// Create a boxed shard based on metadata's `shard_type` field.
 ///
 /// This is the only place where we need dynamic dispatch - when the shard type
@@ -384,18 +594,55 @@ pub async fn create_shard_dynamic(
     event_config: Option<EventConfig>,
     options: ShardOptions,
 ) -> Result<BoxedUnifiedObjectShard, ShardError> {
+    create_shard_dynamic_with_pipeline(
+        metadata,
+        session,
+        event_config,
+        options,
+        None,
+    )
+    .await
+}
+
+/// Like [`create_shard_dynamic`] but accepts an optional [`EventPipelineConfig`]
+/// so callers can override the env-var defaults without side effects.
+pub async fn create_shard_dynamic_with_pipeline(
+    metadata: ShardMetadata,
+    session: zenoh::Session,
+    event_config: Option<EventConfig>,
+    options: ShardOptions,
+    event_pipeline_config: Option<&EventPipelineConfig>,
+) -> Result<BoxedUnifiedObjectShard, ShardError> {
     let shard_type = metadata.shard_type.to_lowercase();
+
+    // Helper: apply optional pipeline config override to a builder
+    fn apply_pipeline<S, R>(
+        mut builder: ShardBuilder<S, R>,
+        cfg: Option<&EventPipelineConfig>,
+    ) -> ShardBuilder<S, R> {
+        if let Some(c) = cfg {
+            builder = builder.event_pipeline_config(c.clone());
+        }
+        builder
+    }
+
+    // Open storage according to metadata options (storage_backend / storage_path).
+    // Defaults to in-memory SkipList when not set.
+    let storage = open_storage_from_options(&metadata.options, metadata.id)?;
 
     match shard_type.as_str() {
         "raft" => {
             info!("Creating Raft-replicated shard");
-            let mut builder = ShardBuilder::new()
-                .metadata(metadata)
-                .session(session)
-                .options(options)
-                .memory_storage()?
-                .raft_replication()
-                .await?;
+            let mut builder = apply_pipeline(
+                ShardBuilder::new()
+                    .metadata(metadata)
+                    .session(session)
+                    .options(options)
+                    .storage(storage)
+                    .raft_replication()
+                    .await?,
+                event_pipeline_config,
+            );
 
             if let Some(config) = event_config {
                 builder = builder.events(config);
@@ -405,12 +652,15 @@ pub async fn create_shard_dynamic(
         }
         "mst" => {
             info!("Creating MST-replicated shard");
-            let mut builder = ShardBuilder::new()
-                .metadata(metadata)
-                .session(session)
-                .options(options)
-                .memory_storage()?
-                .mst_replication()?;
+            let mut builder = apply_pipeline(
+                ShardBuilder::new()
+                    .metadata(metadata)
+                    .session(session)
+                    .options(options)
+                    .storage(storage)
+                    .mst_replication()?,
+                event_pipeline_config,
+            );
 
             if let Some(config) = event_config {
                 builder = builder.events(config);
@@ -420,15 +670,21 @@ pub async fn create_shard_dynamic(
         }
         "none" | "basic" | "single" | _ => {
             if !matches!(shard_type.as_str(), "none" | "basic" | "single") {
-                info!("Unknown shard type '{}', defaulting to no-replication", shard_type);
+                info!(
+                    "Unknown shard type '{}', defaulting to no-replication",
+                    shard_type
+                );
             }
 
-            let mut builder = ShardBuilder::new()
-                .metadata(metadata)
-                .session(session)
-                .options(options)
-                .memory_storage()?
-                .no_replication();
+            let mut builder = apply_pipeline(
+                ShardBuilder::new()
+                    .metadata(metadata)
+                    .session(session)
+                    .options(options)
+                    .storage(storage)
+                    .no_replication(),
+                event_pipeline_config,
+            );
 
             if let Some(config) = event_config {
                 builder = builder.events(config);
@@ -446,11 +702,40 @@ pub async fn create_shard_with_pool(
     event_config: Option<EventConfig>,
     options: ShardOptions,
 ) -> Result<BoxedUnifiedObjectShard, ShardError> {
+    create_shard_with_pool_and_pipeline(
+        metadata,
+        pool,
+        event_config,
+        options,
+        None,
+    )
+    .await
+}
+
+/// Like [`create_shard_with_pool`] but accepts an optional [`EventPipelineConfig`]
+/// so callers can override the defaults without touching env vars.
+pub async fn create_shard_with_pool_and_pipeline(
+    metadata: ShardMetadata,
+    pool: &Pool,
+    event_config: Option<EventConfig>,
+    options: ShardOptions,
+    event_pipeline_config: Option<&EventPipelineConfig>,
+) -> Result<BoxedUnifiedObjectShard, ShardError> {
     let session = pool.get_session().await.map_err(|e| {
-        ShardError::ConfigurationError(format!("Failed to get Zenoh session: {}", e))
+        ShardError::ConfigurationError(format!(
+            "Failed to get Zenoh session: {}",
+            e
+        ))
     })?;
 
-    create_shard_dynamic(metadata, session, event_config, options).await
+    create_shard_dynamic_with_pipeline(
+        metadata,
+        session,
+        event_config,
+        options,
+        event_pipeline_config,
+    )
+    .await
 }
 
 // ============================================================================
@@ -461,7 +746,7 @@ fn build_event_dispatcher(
     session: &zenoh::Session,
     event_config: &Option<EventConfig>,
     event_pipeline_config: &EventPipelineConfig,
-) -> Option<V2DispatcherRef> {
+) -> Option<EventDispatcherRef> {
     if !event_pipeline_config.enabled {
         return None;
     }
@@ -470,10 +755,17 @@ fn build_event_dispatcher(
         Arc::new(TriggerProcessor::new(session.clone(), cfg.clone()))
     });
 
-    Some(V2Dispatcher::new_with_processor(
+    let zenoh_session = if event_pipeline_config.zenoh_event_publish {
+        Some((session.clone(), event_pipeline_config.zenoh_event_locality))
+    } else {
+        None
+    };
+
+    Some(EventDispatcher::new_with_zenoh(
         event_pipeline_config.queue_bound,
         event_pipeline_config.broadcast_bound,
         trigger_processor,
+        zenoh_session,
     ))
 }
 
@@ -513,13 +805,17 @@ pub type MstShard = ObjectUnifiedShard<
 // ============================================================================
 
 /// Backward-compatible factory for creating unified shards.
-/// 
+///
 /// **Deprecated**: Use [`ShardBuilder`] or [`create_shard_with_pool`] instead.
-#[deprecated(since = "0.1.0", note = "Use ShardBuilder or create_shard_with_pool instead")]
+#[deprecated(
+    since = "0.1.0",
+    note = "Use ShardBuilder or create_shard_with_pool instead"
+)]
 pub struct UnifiedShardFactory {
     session_pool: Pool,
     event_config: Option<EventConfig>,
     config: ShardOptions,
+    event_pipeline_config: Option<EventPipelineConfig>,
 }
 
 #[allow(deprecated)]
@@ -530,6 +826,7 @@ impl UnifiedShardFactory {
             session_pool,
             event_config: None,
             config,
+            event_pipeline_config: None,
         }
     }
 
@@ -543,7 +840,14 @@ impl UnifiedShardFactory {
             session_pool,
             event_config: Some(event_config),
             config,
+            event_pipeline_config: None,
         }
+    }
+
+    /// Override the V2 event pipeline configuration instead of reading from env.
+    pub fn with_event_pipeline(mut self, config: EventPipelineConfig) -> Self {
+        self.event_pipeline_config = Some(config);
+        self
     }
 
     /// Create a shard based on the metadata configuration
@@ -551,11 +855,12 @@ impl UnifiedShardFactory {
         &self,
         metadata: ShardMetadata,
     ) -> Result<BoxedUnifiedObjectShard, ShardError> {
-        create_shard_with_pool(
+        create_shard_with_pool_and_pipeline(
             metadata,
             &self.session_pool,
             self.event_config.clone(),
             self.config,
+            self.event_pipeline_config.as_ref(),
         )
         .await
     }
@@ -566,7 +871,10 @@ impl UnifiedShardFactory {
         metadata: ShardMetadata,
     ) -> Result<BasicShard, ShardError> {
         let session = self.session_pool.get_session().await.map_err(|e| {
-            ShardError::ConfigurationError(format!("Failed to get Zenoh session: {}", e))
+            ShardError::ConfigurationError(format!(
+                "Failed to get Zenoh session: {}",
+                e
+            ))
         })?;
 
         let mut builder = ShardBuilder::new()
@@ -589,7 +897,10 @@ impl UnifiedShardFactory {
         metadata: ShardMetadata,
     ) -> Result<MstShard, ShardError> {
         let session = self.session_pool.get_session().await.map_err(|e| {
-            ShardError::ConfigurationError(format!("Failed to get Zenoh session: {}", e))
+            ShardError::ConfigurationError(format!(
+                "Failed to get Zenoh session: {}",
+                e
+            ))
         })?;
 
         let mut builder = ShardBuilder::new()
@@ -612,7 +923,10 @@ impl UnifiedShardFactory {
         metadata: ShardMetadata,
     ) -> Result<RaftShard, ShardError> {
         let session = self.session_pool.get_session().await.map_err(|e| {
-            ShardError::ConfigurationError(format!("Failed to get Zenoh session: {}", e))
+            ShardError::ConfigurationError(format!(
+                "Failed to get Zenoh session: {}",
+                e
+            ))
         })?;
 
         let mut builder = ShardBuilder::new()

@@ -127,6 +127,9 @@ config:
     # Optional: override ODGM sidecar image used by CRM templates
     # When set, CRM will set env OPRC_CRM_TEMPLATES_ODGM_IMAGE accordingly
     odgmImageOverride: ""
+    # Optional: comma-separated KEY=VALUE pairs of extra env vars for ODGM containers
+    # Example: "ODGM_ZENOH_EVENT_PUBLISH=true,ODGM_ZENOH_EVENT_LOCALITY=remote"
+    odgmExtraEnv: ""
 
   # NFR Enforcement configuration
   enforcement:
@@ -258,6 +261,16 @@ router:
     {}
     # CUSTOM_VAR: "value"
 
+  # Network simulation (partition/latency injection)
+  # Requires the router binary to be built with the `network-sim` feature.
+  networkSim:
+    enabled: false
+    # Environment name for this router (should match the deployment's env name)
+    envName: ""
+    # Comma-separated peer endpoints: "env1=host1:port1,env2=host2:port2"
+    # The router will proxy connections through local TCP proxies for fault injection.
+    peers: ""
+
   # Volume mounts and volumes
   volumeMounts: []
   volumes: []
@@ -290,6 +303,8 @@ gateway:
     metricsPort: "" # optional metrics port
     # Note: otel::tracing=trace is required for distributed tracing context propagation
     logLevel: "info,otel::tracing=trace"
+    # Enable WebSocket endpoints (/api/class/{cls}/{pid}/ws, /api/class/{cls}/{pid}/objects/{oid}/ws)
+    wsEnabled: false
 
   ingress:
     enabled: false

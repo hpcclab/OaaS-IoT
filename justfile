@@ -3,6 +3,11 @@ set dotenv-load := true
 
 cri_cmd := if `command -v podman >/dev/null 2>&1 && echo found || echo notfound` == "found" { "podman" } else { "docker" }
 
+
+build-cargo:
+    cargo build -r
+    cargo build -p wasm-guest-echo --target wasm32-wasip2
+
 build BUILD_PROFILE="release":
     {{ cri_cmd }} compose -f docker-compose.build.yml build crm
     {{ cri_cmd }} compose -f docker-compose.build.yml build
@@ -52,8 +57,9 @@ system-e2e:
 system-e2e-clean:
     kind delete cluster --name ${OAAS_E2E_CLUSTER_NAME:-oaas-e2e}
 
-install-tools:
-    cargo install --path tools/oprc-cli
+install-tools NEXT_PUBLIC_API_URL="":
+    cd frontend/oprc-next; npm install; npm run build
+    cargo install --path tools/oprc-cli --features frontend
     # cargo install --path data-plane/oprc-dev --bin check-delay
 
 cloc:
@@ -67,6 +73,7 @@ push-compiler: build-compiler
 
 build-wasm-guest:
     cargo build -p wasm-guest-echo --target wasm32-wasip2 --release
+    cargo build -p pixel-canvas-wasm-rs --target wasm32-wasip2 --release
     cd tools/oprc-compiler && npx tsx scripts/build-bench-guest.ts
 
 # Defaults from environment or hardcoded fallback

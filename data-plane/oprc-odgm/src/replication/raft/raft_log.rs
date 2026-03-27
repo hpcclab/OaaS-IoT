@@ -476,8 +476,8 @@ where
         }
 
         // Flush the log storage to ensure entries are persisted
-        if append_result.is_ok() {
-            if let Err(flush_err) = self
+        if append_result.is_ok()
+            && let Err(flush_err) = self
                 .flush_backends(ErrorSubject::Logs, ErrorVerb::Write)
                 .await
             {
@@ -486,7 +486,6 @@ where
                     flush_err
                 )));
             }
-        }
 
         // Notify completion - create a new Result since io::Error doesn't implement Clone
         let callback_result = match &append_result {

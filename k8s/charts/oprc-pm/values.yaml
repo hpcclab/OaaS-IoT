@@ -183,6 +183,12 @@ config:
     # e.g., "http://oaas-compiler-oprc-compiler:3000"
     url: ""
 
+  # Network simulation configuration
+  # Requires the PM binary to be built with the `network-sim` feature.
+  # PM sends netsim commands to CRM(s) via gRPC; no direct Zenoh needed.
+  networkSim:
+    enabled: false
+
 # Embedded etcd (CoreOS image) managed by this chart
 embeddedEtcd:
   enabled: false

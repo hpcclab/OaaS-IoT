@@ -1,0 +1,76 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pixel-canvas-frontend
+  labels:
+    app.kubernetes.io/name: pixel-canvas-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pixel-canvas-frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pixel-canvas-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: ghcr.io/pawissanutt/oaas-rs/pixel-canvas-frontend:dev
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+            limits:
+              cpu: 500m
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pixel-canvas-frontend
+  labels:
+    app.kubernetes.io/name: pixel-canvas-frontend
+spec:
+  selector:
+    app.kubernetes.io/name: pixel-canvas-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+  type: ClusterIP
+--- 
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pixel-canvas-frontend-ingress
+spec:
+  rules:
+    - host: "canvas.129-114-108-168.nip.io"
+      http:
+        paths:
+          - pathType: Prefix
+            path: /
+            backend:
+              service:
+                name: pixel-canvas-frontend
+                port:
+                  number: 80

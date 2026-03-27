@@ -17,6 +17,25 @@ import { PackageForm } from "@/components/features/package-form";
 import { DEFAULT_PACKAGE } from "@/lib/package-schema";
 import type { OPackage } from "@/lib/bindings/OPackage";
 
+// Mock Monaco editor (not available in jsdom)
+vi.mock("@monaco-editor/react", () => ({
+  __esModule: true,
+  default: (props: Record<string, unknown>) => (
+    <textarea
+      data-testid="mock-editor-textarea"
+      value={props.value as string}
+      onChange={(e) =>
+        (props.onChange as (val: string) => void)?.(e.target.value)
+      }
+    />
+  ),
+}));
+
+// Mock next-themes
+vi.mock("next-themes", () => ({
+  useTheme: () => ({ resolvedTheme: "dark" }),
+}));
+
 function makePkg(overrides: Partial<OPackage> = {}): OPackage {
   return {
     ...DEFAULT_PACKAGE,

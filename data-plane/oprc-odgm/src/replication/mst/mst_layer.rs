@@ -7,6 +7,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::instrument;
 
+use crate::events::EventDispatcherRef;
 use crate::replication::{
     ReplicationError, ReplicationLayer, ReplicationModel, ReplicationResponse,
 };
@@ -36,6 +37,8 @@ pub struct MstReplicationLayer<
     networking: Arc<ZenohMstNetworking<T, S>>,
     readiness_sender: tokio::sync::watch::Sender<bool>,
     readiness_receiver: tokio::sync::watch::Receiver<bool>,
+    #[allow(dead_code)]
+    v2_dispatcher: Option<EventDispatcherRef>,
 }
 
 impl<
@@ -58,12 +61,38 @@ impl<
         config: MstConfig<T>,
         zenoh_session: zenoh::Session,
     ) -> Self {
+        Self::new_with_dispatcher(
+            storage,
+            _shard_id,
+            metadata,
+            config,
+            zenoh_session,
+            None,
+            false,
+        )
+    }
+
+    /// Create a new MST replication layer with an optional V2 event dispatcher.
+    /// When `v2_dispatcher` is `Some`, sync-originated writes will emit
+    /// `MutationSource::Sync` events.
+    #[instrument(skip_all, fields(shard_id = %metadata.id, collection = %metadata.collection, partition_id = %metadata.partition_id))]
+    pub fn new_with_dispatcher(
+        storage: S,
+        _shard_id: u64,
+        metadata: ShardMetadata,
+        config: MstConfig<T>,
+        zenoh_session: zenoh::Session,
+        v2_dispatcher: Option<EventDispatcherRef>,
+        include_entry_values: bool,
+    ) -> Self {
         tracing::debug!("Creating new MST replication layer");
 
         let shard_id = metadata.id;
         let storage = Arc::new(storage);
         let mst = Arc::new(RwLock::new(MerkleSearchTree::default()));
         let config = Arc::new(config);
+        let cls_id = metadata.collection.clone();
+        let partition_id = metadata.partition_id;
 
         // Create networking with access to storage, MST, and config
         let networking = Arc::new(ZenohMstNetworking::new(
@@ -74,6 +103,10 @@ impl<
             mst.clone(),
             config.clone(),
             shard_id,
+            v2_dispatcher.clone(),
+            cls_id,
+            partition_id,
+            include_entry_values,
         ));
 
         let (tx, rx) = tokio::sync::watch::channel(false);
@@ -86,6 +119,7 @@ impl<
             networking,
             readiness_sender: tx,
             readiness_receiver: rx,
+            v2_dispatcher,
         };
 
         tracing::debug!("MST replication layer created successfully");
@@ -106,7 +140,7 @@ impl<
         tracing::debug!("Starting networking layer");
         self.networking.start().await.map_err(|e| {
             tracing::error!("Failed to start networking layer: {}", e);
-            oprc_dp_storage::StorageError::serialization(&e.to_string())
+            oprc_dp_storage::StorageError::serialization(e.to_string())
         })?;
 
         self.start_periodic_publication().await;
@@ -163,11 +197,10 @@ impl<
 
                 // Get MST pages and publish them
                 let pages = {
-                    let pages_vec = match ranges_result {
+                    match ranges_result {
                         Some(ranges_slice) => ranges_slice.to_vec(),
                         None => vec![],
-                    };
-                    pages_vec
+                    }
                 };
 
                 if !pages.is_empty() {
@@ -408,11 +441,10 @@ impl<
         // Extract page ranges in a way that doesn't borrow
         let ranges_result = mst_guard.serialise_page_ranges();
         let pages = {
-            let pages_vec = match ranges_result {
+            match ranges_result {
                 Some(ranges_slice) => ranges_slice.to_vec(),
                 None => vec![],
-            };
-            pages_vec
+            }
         };
 
         if !pages.is_empty() {
@@ -422,7 +454,7 @@ impl<
                 .publish_pages(self.shard_id, network_pages)
                 .await
                 .map_err(|e| {
-                    oprc_dp_storage::StorageError::serialization(&e.to_string())
+                    oprc_dp_storage::StorageError::serialization(e.to_string())
                 })?;
         }
 

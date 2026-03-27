@@ -1,0 +1,44 @@
+[package]
+name = "oprc-dev-server"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[features]
+default = []
+frontend = ["dep:rust-embed", "dep:mime_guess"]
+
+[dependencies]
+anyhow = { workspace = true }
+axum = { workspace = true }
+chrono = { workspace = true }
+envconfig = { workspace = true }
+http = { workspace = true }
+oprc-gateway = { path = "../../data-plane/oprc-gateway" }
+oprc-grpc = { workspace = true, features = ["util"] }
+oprc-models = { workspace = true }
+oprc-netsim = { workspace = true, features = ["http"] }
+oprc-odgm = { workspace = true, features = ["wasm"] }
+oprc-zenoh = { workspace = true }
+tokio-util = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+tokio = { workspace = true, features = ["macros", "signal", "rt-multi-thread", "net", "io-util"] }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+# Frontend embedding (optional)
+rust-embed = { version = "8", optional = true }
+mime_guess = { version = "2", optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+tower = { workspace = true }
+serde_json = { workspace = true }
+http = { workspace = true }
+zenoh = { workspace = true }

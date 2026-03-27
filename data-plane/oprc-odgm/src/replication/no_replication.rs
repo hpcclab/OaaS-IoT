@@ -58,27 +58,24 @@ impl<S: oprc_dp_storage::StorageBackend + Send + Sync> ReplicationLayer
                         .put_with_return(key_bytes, write_op.value)
                         .await
                         .map_err(ReplicationError::StorageError)
-                        .and_then(|old_value| {
+                        .map(|old_value| {
                             let overwrite = old_value.is_some();
-                            Ok(ReplicationResponse {
+                            ReplicationResponse {
                                 status: ResponseStatus::Applied,
                                 data: old_value,
                                 extra: OperationExtra::Write(overwrite),
                                 ..Default::default()
-                            })
+                            }
                         })
                 } else {
                     self.storage
                         .put(key_bytes, write_op.value)
                         .await
-                        .map_err(ReplicationError::StorageError)
-                        .and_then(|ovr| {
-                            Ok(ReplicationResponse {
+                        .map_err(ReplicationError::StorageError).map(|ovr| ReplicationResponse {
                                 status: ResponseStatus::Applied,
                                 extra: OperationExtra::Write(ovr),
                                 ..Default::default()
                             })
-                        })
                 }
             }
             Operation::Delete(delete_op) => {

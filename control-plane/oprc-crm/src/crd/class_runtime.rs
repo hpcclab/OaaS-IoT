@@ -141,6 +141,8 @@ pub struct OdgmConfigSpec {
         skip_serializing_if = "std::collections::BTreeMap::is_empty"
     )]
     pub env_node_ids: BTreeMap<String, Vec<u64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zenoh_mode: Option<String>,
     /// Convenience selected node id for this runtime's environment
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node_id: Option<u64>,
@@ -265,6 +267,9 @@ pub struct FunctionRoute {
     /// For WASM functions: URL to fetch the .wasm module from
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wasm_module_url: Option<String>,
+    /// Maximum WASM fuel per invocation. None uses the runtime default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wasm_fuel: Option<u64>,
     /// Whether the function is stateless (default true)
     #[serde(default)]
     pub stateless: Option<bool>,

@@ -2,7 +2,7 @@ use super::requirements::DeploymentRequirements;
 use crate::services::deployment::generate_shard_assignments_spec;
 use chrono::Utc;
 use oprc_grpc::types as grpc_types;
-use oprc_models::{OClass, OClassDeployment};
+use oprc_models::{OClass, OClassDeployment, enums::ConsistencyModel};
 use tracing::debug;
 
 fn dns_label_safe(mut s: String) -> String {
@@ -93,6 +93,7 @@ pub fn create_deployment_units_for_env(
                 memory_limit: pc_model.memory_limit.clone(),
                 min_scale: pc_model.min_scale,
                 max_scale: pc_model.max_scale,
+                wasm_fuel: pc_model.wasm_fuel,
             });
             let nfr = &deployment.nfr_requirements;
             let nfr_requirements = Some(grpc_types::NfrRequirements {
@@ -190,19 +191,67 @@ pub fn create_deployment_units_for_env(
                 disabled_fn: vec![],
             });
         }
+        // Three-source merge into OdgmConfig:
+        //   class.options              → base options (semantic / class-invariant behavior)
+        //   deployment.odgm.options    → overlay (per-deployment capacity/perf tuning; wins on conflict)
+        //   consistency_model          → derives shard_type automatically
+        let consistency =
+            class.state_spec.as_ref().map(|s| &s.consistency_model);
+
+        // Build merged options: class first, then deployment overrides on top.
+        let mut merged_options = class.options.clone();
+        merged_options
+            .extend(o.options.iter().map(|(k, v)| (k.clone(), v.clone())));
+
+        // Inject storage_backend/storage_path when state_spec.persistent == true
+        // (unless the user already explicitly set storage_backend in options).
+        if !merged_options.contains_key("storage_backend") {
+            let is_persistent = class
+                .state_spec
+                .as_ref()
+                .map(|s| s.persistent)
+                .unwrap_or(false);
+            if is_persistent {
+                merged_options.insert("storage_backend".into(), "fjall".into());
+                if !merged_options.contains_key("storage_path") {
+                    // Default data directory: /data/odgm/{package}.{class}
+                    let col_name =
+                        o.collections.first().cloned().unwrap_or_else(|| {
+                            format!("{}.{}", deployment.package_name, class.key)
+                        });
+                    merged_options.insert(
+                        "storage_path".into(),
+                        format!("/data/odgm/{}", col_name),
+                    );
+                }
+            }
+        }
+
+        // Derive shard_type from consistency model when not explicitly overridden.
+        let shard_type = o.shard_type.clone().or_else(|| {
+            Some(
+                match consistency {
+                    Some(ConsistencyModel::Strong) => "raft",
+                    _ => "mst",
+                }
+                .to_string(),
+            )
+        });
+
         grpc_types::OdgmConfig {
             collections: o.collections.clone(),
             partition_count: o.partition_count,
             replica_count: o
                 .replica_count
                 .or(Some(requirements.target_replicas)),
-            shard_type: o.shard_type.clone(),
+            shard_type,
             invocations: inv_routes,
-            options: std::collections::HashMap::new(),
+            options: merged_options,
             log: o.log.clone(),
             env_node_ids: env_map,
             odgm_node_id: ids_for_env.first().cloned(),
             collection_assignments,
+            zenoh_mode: o.zenoh_mode.clone(),
         }
     });
 

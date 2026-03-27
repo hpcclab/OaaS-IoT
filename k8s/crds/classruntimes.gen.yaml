@@ -108,6 +108,12 @@ spec:
                           minimum: 0.0
                           nullable: true
                           type: integer
+                        wasm_fuel:
+                          description: Maximum WASM fuel consumed per invocation. None uses the runtime default (1_000_000_000).
+                          format: uint64
+                          minimum: 0.0
+                          nullable: true
+                          type: integer
                         wasm_module_url:
                           description: |-
                             URL to a compiled WASI component (.wasm). HTTP, OCI, or file:// path.
@@ -240,6 +246,12 @@ spec:
                             url:
                               description: URL endpoint for the function
                               type: string
+                            wasm_fuel:
+                              description: Maximum WASM fuel per invocation. None uses the runtime default.
+                              format: uint64
+                              minimum: 0.0
+                              nullable: true
+                              type: integer
                             wasm_module_url:
                               description: 'For WASM functions: URL to fetch the .wasm module from'
                               nullable: true
@@ -278,6 +290,9 @@ spec:
                     type: integer
                   shard_type:
                     description: Shard type (e.g., "mst", "raft", etc.) default "mst"
+                    nullable: true
+                    type: string
+                  zenoh_mode:
                     nullable: true
                     type: string
                 type: object

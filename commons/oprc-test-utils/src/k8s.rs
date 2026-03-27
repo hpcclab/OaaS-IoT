@@ -354,7 +354,7 @@ impl Drop for ControllerGuard {
                 .enable_all()
                 .build()
                 .expect("create temp rt");
-            let done = rt.block_on(async move {
+            rt.block_on(async move {
                 // Wait up to 15s for cleanup
                 wait_for_cleanup_async(&ns2, &name2, client2, include_hpa2, 15)
                     .await;
@@ -362,7 +362,7 @@ impl Drop for ControllerGuard {
             // Notify caller the wait finished (best-effort)
             let _ = tx.send(());
             // drop runtime result value
-            let _ = done;
+            ();
         });
         // Wait up to 16s for the helper to signal completion; don't panic on timeout
         let _ = rx.recv_timeout(std::time::Duration::from_secs(16));
@@ -405,11 +405,10 @@ pub async fn ensure_service_exists(
         .create(&PostParams::default(), &obj)
         .await
         .or_else(|e| {
-            if let kube::Error::Api(ae) = &e {
-                if ae.code == 409 {
+            if let kube::Error::Api(ae) = &e
+                && ae.code == 409 {
                     return Ok(obj.clone());
                 }
-            }
             Err(e)
         })
         .expect("create/get service");
@@ -463,11 +462,10 @@ pub async fn ensure_deployment_exists(
         .create(&PostParams::default(), &dep)
         .await
         .or_else(|e| {
-            if let kube::Error::Api(ae) = &e {
-                if ae.code == 409 {
+            if let kube::Error::Api(ae) = &e
+                && ae.code == 409 {
                     return Ok(dep.clone());
                 }
-            }
             Err(e)
         })
         .expect("create/get deployment");

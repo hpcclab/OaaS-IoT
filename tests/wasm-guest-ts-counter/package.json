@@ -1,0 +1,13 @@
+{
+  "name": "wasm-guest-ts-counter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "compile": "oprc-compile --disable http"
+  },
+  "dependencies": {
+    "@oaas/sdk": "file:../../tools/oaas-sdk-ts",
+    "oprc-compiler": "file:../../tools/oprc-compiler"
+  }
+}

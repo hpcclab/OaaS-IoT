@@ -97,11 +97,10 @@ pub(super) fn parse_identity_from_query(
 
     let selector = query.selector();
     let parameters = selector.parameters();
-    if let Some(oid_param) = parameters.get("oid") {
-        if let Ok(oid) = oid_param.parse::<u64>() {
+    if let Some(oid_param) = parameters.get("oid")
+        && let Ok(oid) = oid_param.parse::<u64>() {
             return Some(ObjectIdentity::Numeric(oid));
         }
-    }
     if let Some(oid_str) = parameters.get("oid_str") {
         match normalize_object_id(oid_str, max_string_id_len) {
             Ok(norm) => return Some(ObjectIdentity::Str(norm)),

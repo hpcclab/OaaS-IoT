@@ -68,8 +68,8 @@ where
     // Unified shard configuration
     config: UnifiedShardConfig,
 
-    // V2 per-entry dispatcher (J2 skeleton)
-    pub(crate) v2_dispatcher: Option<crate::events::V2DispatcherRef>,
+    // Event dispatcher
+    pub(crate) v2_dispatcher: Option<crate::events::EventDispatcherRef>,
 }
 
 impl<A, R, E> ObjectUnifiedShard<A, R, E>
@@ -84,10 +84,10 @@ where
     pub fn partition_id_u16(&self) -> u16 {
         self.metadata.partition_id as u16
     }
-    pub fn v2_subscribe(
+    pub fn subscribe_events(
         &self,
     ) -> Option<
-        tokio::sync::broadcast::Receiver<crate::events::v2::V2QueuedEvent>,
+        tokio::sync::broadcast::Receiver<crate::events::QueuedEvent>,
     > {
         self.v2_dispatcher.as_ref().map(|d| d.subscribe())
     }
@@ -177,8 +177,8 @@ where
         z_session: zenoh::Session,
         event_manager: Option<Arc<E>>,
         config: UnifiedShardConfig,
-        // Optionally pass V2 dispatcher
-        v2_dispatcher: Option<crate::events::V2DispatcherRef>,
+        // Optionally pass event dispatcher
+        v2_dispatcher: Option<crate::events::EventDispatcherRef>,
     ) -> Result<Self, ShardError> {
         debug!("Creating new full ObjectUnifiedShard");
         let config = Self::sanitize_config(config);
@@ -442,6 +442,7 @@ where
                     changed.push(ChangedKey {
                         key_canonical: k.clone(),
                         action: MutAction::Delete,
+                        value: None,
                     });
                 }
                 if !changed.is_empty() {
@@ -521,6 +522,7 @@ where
                     changed.push(ChangedKey {
                         key_canonical: k.clone(),
                         action: MutAction::Delete,
+                        value: None,
                     });
                 }
                 if !changed.is_empty() {

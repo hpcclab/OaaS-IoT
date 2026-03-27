@@ -32,9 +32,12 @@ pub struct OPackage {
     pub deployments: Vec<OClassDeployment>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Validate, JsonSchema)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Validate, JsonSchema,
+)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
+#[derive(Default)]
 pub struct ResourceRequirements {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cpu_request: Option<String>,
@@ -44,17 +47,6 @@ pub struct ResourceRequirements {
     pub cpu_limit: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_limit: Option<String>,
-}
-
-impl Default for ResourceRequirements {
-    fn default() -> Self {
-        Self {
-            cpu_request: None,
-            memory_request: None,
-            cpu_limit: None,
-            memory_limit: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Validate)]
@@ -69,6 +61,22 @@ pub struct OClass {
     #[validate(nested)]
     #[serde(default)]
     pub function_bindings: Vec<FunctionBinding>,
+    /// Semantic / behavioral options for this collection type.
+    ///
+    /// These are **class-invariant**: forwarded to every ODGM shard as
+    /// `ShardMetadata.options` in every deployment of this class. Use this
+    /// field for data-plane toggles that define *what the class does*:
+    /// - `zenoh_event_publish` — whether mutations are published to Zenoh
+    /// - `zenoh_event_locality` — Zenoh interest scoping ("any", "local", …)
+    /// - `ws_event_include_values` — whether WebSocket events carry full values
+    ///
+    ///
+    /// For per-deployment capacity/performance tuning (`batch_size`,
+    /// `timeout_ms`, pool sizes), use `OClassDeployment.odgm.options` instead.
+    /// For infrastructure config (partition count, shard type, logging), use
+    /// `OClassDeployment.odgm`.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub options: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Validate)]
@@ -86,7 +94,9 @@ pub struct OFunction {
     pub config: HashMap<String, String>, // Additional config key-value pairs (injected via ENV)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Validate, Default)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Validate, Default,
+)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
 pub struct PackageMetadata {
@@ -133,6 +143,7 @@ pub struct FunctionBinding {
     pub name: String,
     #[validate(length(min = 1, message = "Function key cannot be empty"))]
     pub function_key: String,
+    #[serde(default)]
     pub access_modifier: FunctionAccessModifier,
     #[serde(default)]
     pub stateless: bool,
@@ -171,7 +182,9 @@ impl OPackage {
         let mut class_keys = std::collections::HashSet::new();
         for class in &self.classes {
             if !class_keys.insert(&class.key) {
-                return Err(ValidationError::DuplicateClassKey(class.key.clone()));
+                return Err(ValidationError::DuplicateClassKey(
+                    class.key.clone(),
+                ));
             }
         }
 
@@ -179,7 +192,9 @@ impl OPackage {
         let mut function_keys = std::collections::HashSet::new();
         for function in &self.functions {
             if !function_keys.insert(&function.key) {
-                return Err(ValidationError::DuplicateFunctionKey(function.key.clone()));
+                return Err(ValidationError::DuplicateFunctionKey(
+                    function.key.clone(),
+                ));
             }
         }
 

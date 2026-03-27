@@ -37,9 +37,9 @@ impl AnyStorage {
             StorageBackendType::Memory => {
                 #[cfg(feature = "skiplist")]
                 {
-                    return Ok(AnyStorage::SkipList(SkipListStorage::new(
+                    Ok(AnyStorage::SkipList(SkipListStorage::new(
                         config,
-                    )?));
+                    )?))
                 }
                 #[cfg(not(feature = "skiplist"))]
                 {
@@ -49,9 +49,9 @@ impl AnyStorage {
             StorageBackendType::SkipList => {
                 #[cfg(feature = "skiplist")]
                 {
-                    return Ok(AnyStorage::SkipList(SkipListStorage::new(
+                    Ok(AnyStorage::SkipList(SkipListStorage::new(
                         config,
-                    )?));
+                    )?))
                 }
                 #[cfg(not(feature = "skiplist"))]
                 {
@@ -63,7 +63,7 @@ impl AnyStorage {
             StorageBackendType::Fjall => {
                 #[cfg(feature = "fjall")]
                 {
-                    return Ok(AnyStorage::Fjall(FjallStorage::new(config)?));
+                    Ok(AnyStorage::Fjall(FjallStorage::new(config)?))
                 }
                 #[cfg(not(feature = "fjall"))]
                 {

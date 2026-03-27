@@ -12,6 +12,7 @@ export interface ClusterInfo {
     nodes?: string; // "3/3 ready"
     avail?: string; // "99.9%"
     lastSeen?: string;
+    gateway_url?: string; // Per-env gateway base URL (dev server)
     raw?: unknown; // Raw JSON payload
 }
 
@@ -24,12 +25,12 @@ export interface ObjEvent {
     target?: string;
 }
 
+/** Object as returned by the gateway LIST endpoint. */
 export interface OObject {
+    /** Maps from gateway's `object_id` field. */
     id: string;
-    class: string;
-    partition: number;
-    entries: ObjEntry;
-    events: ObjEvent[];
+    version?: number;
+    entry_count?: number;
 }
 
 export interface TopologyNode {

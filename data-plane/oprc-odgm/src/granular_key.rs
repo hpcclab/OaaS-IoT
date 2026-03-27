@@ -38,6 +38,7 @@ pub fn string_to_numeric_key(key: &str) -> Option<u32> {
 /// Versioned object metadata persisted separately from entries.
 /// This structure is stored at the metadata key: <object_id><0x00><0x00>
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default)]
 pub struct ObjectMetadata {
     /// Monotonic version number, incremented once per batch mutation.
     pub object_version: u64,
@@ -49,15 +50,6 @@ pub struct ObjectMetadata {
     pub attributes: Vec<(String, String)>,
 }
 
-impl Default for ObjectMetadata {
-    fn default() -> Self {
-        Self {
-            object_version: 0,
-            tombstone: false,
-            attributes: Vec::new(),
-        }
-    }
-}
 
 impl ObjectMetadata {
     /// Create new metadata with version 0.

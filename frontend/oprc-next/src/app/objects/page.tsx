@@ -41,9 +41,11 @@ import {
     invokeFunction,
     createOrUpdateObject,
     deleteObject as deleteObjectApi,
+    fetchEnvironments,
+    encodeEntries,
 } from "@/lib/api";
 import { OClassDeployment } from "@/lib/bindings/OClassDeployment";
-import { OObject } from "@/lib/types";
+import { OObject, ClusterInfo } from "@/lib/types";
 import { toast } from "sonner";
 
 // Object ID validation: lowercase, max 160 chars, [a-z0-9._:-]
@@ -53,11 +55,14 @@ export default function ObjectsPage() {
     const [deployments, setDeployments] = useState<OClassDeployment[]>([]);
     const [selectedClass, setSelectedClass] = useState<string>("");
     const [selectedPartition, setSelectedPartition] = useState<number>(0);
+    const [selectedEnv, setSelectedEnv] = useState<string>("");
+    const [environments, setEnvironments] = useState<ClusterInfo[]>([]);
     const [objects, setObjects] = useState<OObject[]>([]);
     const [loadingObjects, setLoadingObjects] = useState(false);
 
     // Selection state
     const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [selectedDetail, setSelectedDetail] = useState<Record<string, unknown> | null>(null);
     const [search, setSearch] = useState("");
 
     // Invocation state
@@ -88,13 +93,22 @@ export default function ObjectsPage() {
     const [rawData, setRawData] = useState<unknown>(null);
     const [rawTitle, setRawTitle] = useState("");
 
+    // Resolve the gateway URL for the currently selected environment
+    const selectedGatewayUrl = environments.find(e => e.name === selectedEnv)?.gateway_url;
+
     // Initial load
     useEffect(() => {
-        fetchDeployments().then(deps => {
+        Promise.all([fetchDeployments(), fetchEnvironments()]).then(([deps, envs]) => {
             setDeployments(deps);
+            setEnvironments(envs);
             if (deps.length > 0) {
-                setSelectedClass(deps[0].class_key);
+                setSelectedClass(`${deps[0].package_name}.${deps[0].class_key}`);
                 setSelectedPartition(0);
+                // Default to first target env — objects are per-environment
+                const targetEnvs = deps[0].target_envs ?? [];
+                if (targetEnvs.length > 0) {
+                    setSelectedEnv(targetEnvs[0]);
+                }
             }
         });
     }, []);
@@ -104,7 +118,8 @@ export default function ObjectsPage() {
 
         setLoadingObjects(true);
         try {
-            const objs = await fetchObjects(selectedClass, selectedPartition);
+            const env = selectedEnv || undefined;
+            const objs = await fetchObjects(selectedClass, selectedPartition, env, selectedGatewayUrl);
             setObjects(objs);
             if (objs.length > 0) {
                 setSelectedId(objs[0].id);
@@ -117,12 +132,24 @@ export default function ObjectsPage() {
         } finally {
             setLoadingObjects(false);
         }
-    }, [selectedClass, selectedPartition]);
+    }, [selectedClass, selectedPartition, selectedEnv, selectedGatewayUrl]);
 
     // Fetch objects when class/partition changes
     useEffect(() => {
         loadObjects();
     }, [loadObjects]);
+
+    // Refresh the detail panel for the currently selected object
+    const refreshDetail = useCallback(async () => {
+        if (!selectedId || !selectedClass) return;
+        const env = selectedEnv || undefined;
+        try {
+            const data = await fetchObject(selectedClass, selectedPartition, selectedId, env, selectedGatewayUrl);
+            setSelectedDetail(data as Record<string, unknown>);
+        } catch {
+            setSelectedDetail(null);
+        }
+    }, [selectedId, selectedClass, selectedPartition, selectedEnv, selectedGatewayUrl]);
 
     const handleInvoke = async () => {
         if (!selectedId || !selectedClass) return;
@@ -131,8 +158,10 @@ export default function ObjectsPage() {
         setInvokeResult(null);
         try {
             const payload = JSON.parse(invokePayload);
-            const res = await invokeFunction(selectedClass, selectedPartition, selectedId, invokeFn, payload);
+            const env = selectedEnv || undefined;
+            const res = await invokeFunction(selectedClass, selectedPartition, selectedId, invokeFn, payload, env, selectedGatewayUrl);
             setInvokeResult(res);
+            await refreshDetail();
         } catch (e) {
             console.error(e);
             setInvokeResult({ error: String(e) });
@@ -158,7 +187,12 @@ export default function ObjectsPage() {
         setCreatingObj(true);
         try {
             const entries = JSON.parse(newObjEntries);
-            await createOrUpdateObject(selectedClass, selectedPartition, newObjId, { entries });
+            const env = selectedEnv || undefined;
+            // Encode plain JSON entries to ObjData/ValData format for the gateway
+            const objData = Object.keys(entries).length > 0
+                ? { entries: encodeEntries(entries) }
+                : { entries: {} };
+            await createOrUpdateObject(selectedClass, selectedPartition, newObjId, objData, env, selectedGatewayUrl);
             toast.success(`Object "${newObjId}" created`);
             setCreateOpen(false);
             setNewObjId("");
@@ -176,7 +210,8 @@ export default function ObjectsPage() {
         setLoadingEdit(true);
         setEditOpen(true);
         try {
-            const data = await fetchObject(selectedClass, selectedPartition, objId);
+            const env = selectedEnv || undefined;
+            const data = await fetchObject(selectedClass, selectedPartition, objId, env, selectedGatewayUrl);
             setEditObjEntries(JSON.stringify((data as Record<string, unknown>)?.entries || {}, null, 2));
         } catch (e) {
             toast.error(`Failed to load object: ${e instanceof Error ? e.message : String(e)}`);
@@ -190,7 +225,9 @@ export default function ObjectsPage() {
         setEditingObj(true);
         try {
             const entries = JSON.parse(editObjEntries);
-            await createOrUpdateObject(selectedClass, selectedPartition, editObjId, { entries });
+            const env = selectedEnv || undefined;
+            // Entries from the edit dialog are already in gateway ValData format
+            await createOrUpdateObject(selectedClass, selectedPartition, editObjId, { entries }, env, selectedGatewayUrl);
             toast.success(`Object "${editObjId}" updated`);
             setEditOpen(false);
             await loadObjects();
@@ -205,7 +242,8 @@ export default function ObjectsPage() {
         if (!deleteTarget) return;
         setDeletingObj(true);
         try {
-            await deleteObjectApi(selectedClass, selectedPartition, deleteTarget);
+            const env = selectedEnv || undefined;
+            await deleteObjectApi(selectedClass, selectedPartition, deleteTarget, env, selectedGatewayUrl);
             toast.success(`Object "${deleteTarget}" deleted`);
             setDeleteTarget(null);
             await loadObjects();
@@ -218,7 +256,8 @@ export default function ObjectsPage() {
 
     const handleViewRaw = async (objId: string) => {
         try {
-            const data = await fetchObject(selectedClass, selectedPartition, objId);
+            const env = selectedEnv || undefined;
+            const data = await fetchObject(selectedClass, selectedPartition, objId, env, selectedGatewayUrl);
             setRawTitle(`Object: ${objId}`);
             setRawData(data);
             setRawDialogOpen(true);
@@ -228,15 +267,28 @@ export default function ObjectsPage() {
     };
 
     // Derived state
-    const uniqueClasses = Array.from(new Set(deployments.map(d => d.class_key)));
-    const currentDeployment = deployments.find(d => d.class_key === selectedClass);
+    const uniqueClasses = Array.from(new Set(deployments.map(d => `${d.package_name}.${d.class_key}`)));
+    const currentDeployment = deployments.find(d => `${d.package_name}.${d.class_key}` === selectedClass);
     const maxPartitions = currentDeployment?.odgm?.partition_count ?? 1;
+    const availableEnvs = Array.from(new Set(deployments.flatMap(d => d.target_envs ?? [])));
 
     const filteredObjects = objects.filter((o) =>
         o.id.toLowerCase().includes(search.toLowerCase())
     );
 
     const checkSelectedObject = objects.find(o => o.id === selectedId);
+
+    // Fetch full object detail when selection changes
+    useEffect(() => {
+        if (!selectedId || !selectedClass) {
+            setSelectedDetail(null);
+            return;
+        }
+        const env = selectedEnv || undefined;
+        fetchObject(selectedClass, selectedPartition, selectedId, env, selectedGatewayUrl)
+            .then(data => setSelectedDetail(data as Record<string, unknown>))
+            .catch(() => setSelectedDetail(null));
+    }, [selectedId, selectedClass, selectedPartition, selectedEnv, selectedGatewayUrl]);
 
     return (
         <div className="flex flex-col h-[calc(100vh-8rem)] gap-4">
@@ -275,6 +327,17 @@ export default function ObjectsPage() {
                                 <option key={i} value={i}>P-{i}</option>
                             ))}
                         </select>
+                        {availableEnvs.length > 0 && (
+                            <select
+                                className="flex h-10 w-auto items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                value={selectedEnv}
+                                onChange={(e) => setSelectedEnv(e.target.value)}
+                            >
+                                {availableEnvs.map(env => (
+                                    <option key={env} value={env}>{env}</option>
+                                ))}
+                            </select>
+                        )}
                         <Button onClick={() => setCreateOpen(true)} disabled={!selectedClass}>
                             <Plus className="mr-2 h-4 w-4" /> New
                         </Button>
@@ -369,6 +432,7 @@ export default function ObjectsPage() {
                                     </CardTitle>
                                     <p className="text-sm text-muted-foreground mt-1">
                                         Class: <span className="text-foreground">{selectedClass}</span> • Partition: <span className="font-mono">{selectedPartition}</span>
+                                        {selectedEnv && <> • Env: <span className="text-foreground">{selectedEnv}</span></>}
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -389,7 +453,7 @@ export default function ObjectsPage() {
                                     <TabsContent value="entries" className="space-y-4">
                                         <div className="border rounded-md p-4 bg-muted/30">
                                             <pre className="text-sm font-mono overflow-auto">
-                                                {JSON.stringify(checkSelectedObject.entries || {}, null, 2)}
+                                                {JSON.stringify(selectedDetail?.entries || {}, null, 2)}
                                             </pre>
                                         </div>
                                         <div className="border rounded-md p-4">
@@ -424,16 +488,11 @@ export default function ObjectsPage() {
                                         </div>
                                     </TabsContent>
                                     <TabsContent value="events">
-                                        {checkSelectedObject.events && checkSelectedObject.events.length > 0 ? (
-                                            <div className="space-y-2">
-                                                {checkSelectedObject.events.map((evt, i) => (
-                                                    <div key={i} className="border rounded-md p-3 bg-muted/30">
-                                                        <div className="text-sm font-medium">Type: {evt.type}</div>
-                                                        {evt.target && (
-                                                            <div className="text-xs text-muted-foreground mt-1">Target: {evt.target}</div>
-                                                        )}
-                                                    </div>
-                                                ))}
+                                        {selectedDetail?.event ? (
+                                            <div className="border rounded-md p-4 bg-muted/30">
+                                                <pre className="text-sm font-mono overflow-auto">
+                                                    {JSON.stringify(selectedDetail.event, null, 2)}
+                                                </pre>
                                             </div>
                                         ) : (
                                             <div className="text-center py-12 text-muted-foreground">

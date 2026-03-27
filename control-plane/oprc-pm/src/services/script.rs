@@ -448,6 +448,7 @@ impl ScriptService {
             description: Some(format!("Script class for {}", req.class_key)),
             state_spec: None,
             function_bindings: bindings,
+            options: Default::default(),
         };
 
         // Try to update existing package or create new one

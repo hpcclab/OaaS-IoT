@@ -134,7 +134,7 @@ pub async fn handle_result_ops(
             }
             if let Some(b) = &resp.payload {
                 let str_resp = String::from_utf8_lossy(b);
-                print!("{}\n", str_resp);
+                println!("{}", str_resp);
             } else {
                 println!("{:?}", resp);
             }

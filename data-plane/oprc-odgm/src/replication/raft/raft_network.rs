@@ -15,8 +15,8 @@ use openraft::{
 };
 use oprc_zrpc::{
     ZrpcClient, ZrpcError, ZrpcServiceHander,
-    postcard::PostcardZrpcType,
     client::ZrpcClientConfig,
+    postcard::PostcardZrpcType,
     server::{ServerConfig, ZrpcService},
 };
 use zenoh::Session;
@@ -34,7 +34,7 @@ pub struct AppendHandler<T: RaftTypeConfig> {
 
 #[async_trait::async_trait]
 impl<C: RaftTypeConfig> ZrpcServiceHander<AppendType<C>> for AppendHandler<C> {
-    #[tracing::instrument(skip(self, req), name = "raft.append_entries")]
+    #[tracing::instrument(skip(self, req), name = "raft.append_entries", level = tracing::Level::TRACE)]
     async fn handle(
         &self,
         req: AppendEntriesRequest<C>,

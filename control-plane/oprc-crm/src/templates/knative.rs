@@ -300,8 +300,7 @@ impl Template for KnativeTemplate {
             // Deterministically sort env array (and deduplicate by name keeping first)
             if let Some(env_val) =
                 container.as_object_mut().unwrap().get_mut("env")
-            {
-                if let Some(arr) = env_val.as_array_mut() {
+                && let Some(arr) = env_val.as_array_mut() {
                     arr.sort_by(|a, b| {
                         let an = a
                             .get("name")
@@ -327,7 +326,6 @@ impl Template for KnativeTemplate {
                         }
                     });
                 }
-            }
 
             // If there's a single function, keep the service name equal to the safe base
             // so tests that expect the DR-derived name continue to pass.
@@ -360,8 +358,8 @@ impl Template for KnativeTemplate {
                 }
             });
             // containerConcurrency from ProvisionConfig.max_concurrency (non-zero)
-            if let Some(pc) = f.provision_config.as_ref() {
-                if pc.max_concurrency > 0 {
+            if let Some(pc) = f.provision_config.as_ref()
+                && pc.max_concurrency > 0 {
                     kns["spec"]["template"]["spec"]
                         .as_object_mut()
                         .unwrap()
@@ -370,7 +368,6 @@ impl Template for KnativeTemplate {
                             serde_json::json!(pc.max_concurrency),
                         );
                 }
-            }
             if !revision_annotations.is_empty() {
                 kns["spec"]["template"]["metadata"]
                     .as_object_mut()
@@ -481,6 +478,7 @@ mod tests {
                 profile: "full",
                 odgm_image_override: None,
                 odgm_pull_policy_override: None,
+                odgm_extra_env: None,
                 router_service_name: None,
                 router_service_port: None,
                 telemetry: ResolvedTelemetry::disabled(),
@@ -534,6 +532,7 @@ mod tests {
                 profile: "full",
                 odgm_image_override: None,
                 odgm_pull_policy_override: None,
+                odgm_extra_env: None,
                 router_service_name: None,
                 router_service_port: None,
                 telemetry: ResolvedTelemetry::disabled(),
@@ -585,6 +584,7 @@ mod tests {
                 profile: "full",
                 odgm_image_override: None,
                 odgm_pull_policy_override: None,
+                odgm_extra_env: None,
                 router_service_name: None,
                 router_service_port: None,
                 telemetry: ResolvedTelemetry::disabled(),
@@ -602,6 +602,7 @@ mod tests {
                 profile: "full",
                 odgm_image_override: None,
                 odgm_pull_policy_override: None,
+                odgm_extra_env: None,
                 router_service_name: None,
                 router_service_port: None,
                 telemetry: ResolvedTelemetry::disabled(),
@@ -650,6 +651,7 @@ mod tests {
                 profile: "full",
                 odgm_image_override: None,
                 odgm_pull_policy_override: None,
+                odgm_extra_env: None,
                 router_service_name: None,
                 router_service_port: None,
                 telemetry: ResolvedTelemetry::disabled(),
@@ -675,6 +677,7 @@ mod tests {
                 profile: "full",
                 odgm_image_override: None,
                 odgm_pull_policy_override: None,
+                odgm_extra_env: None,
                 router_service_name: None,
                 router_service_port: None,
                 telemetry: ResolvedTelemetry::disabled(),
@@ -717,6 +720,7 @@ mod tests {
                 profile: "full",
                 odgm_image_override: None,
                 odgm_pull_policy_override: None,
+                odgm_extra_env: None,
                 router_service_name: None,
                 router_service_port: None,
                 telemetry: ResolvedTelemetry::disabled(),
@@ -741,6 +745,7 @@ mod tests {
                 profile: "full",
                 odgm_image_override: None,
                 odgm_pull_policy_override: None,
+                odgm_extra_env: None,
                 router_service_name: None,
                 router_service_port: None,
                 telemetry: ResolvedTelemetry::disabled(),
@@ -801,6 +806,7 @@ mod tests {
                 profile: "full",
                 odgm_image_override: None,
                 odgm_pull_policy_override: None,
+                odgm_extra_env: None,
                 router_service_name: None,
                 router_service_port: None,
                 telemetry: ResolvedTelemetry::disabled(),

@@ -278,9 +278,16 @@ pub fn build_odgm_resources(
 
         if let Some(router_name) = ctx.router_service_name.as_ref() {
             let router_port = ctx.router_service_port.unwrap_or(17447);
+            let zenoh_mode = ctx
+                .spec
+                .odgm_config
+                .as_ref()
+                .and_then(|c| c.zenoh_mode.as_ref())
+                .map(|s| s.as_str())
+                .unwrap_or("peer");
             env.push(EnvVar {
                 name: "OPRC_ZENOH_MODE".into(),
-                value: Some("peer".into()),
+                value: Some(zenoh_mode.into()),
                 ..Default::default()
             });
             env.push(EnvVar {
@@ -321,6 +328,22 @@ pub fn build_odgm_resources(
             value: Some(ctx.name.to_string()),
             ..Default::default()
         });
+        odgm_container.env = Some(env);
+    }
+
+    // Inject extra ODGM env vars from CRM configuration
+    if let Some(extra) = ctx.odgm_extra_env {
+        let mut env = odgm_container.env.take().unwrap_or_default();
+        for pair in extra.split(',') {
+            let pair = pair.trim();
+            if let Some((k, v)) = pair.split_once('=') {
+                env.push(EnvVar {
+                    name: k.trim().to_string(),
+                    value: Some(v.trim().to_string()),
+                    ..Default::default()
+                });
+            }
+        }
         odgm_container.env = Some(env);
     }
 
@@ -413,7 +436,7 @@ fn merged_function_routes(
                     String,
                     crate::crd::class_runtime::FunctionRoute,
                 > = std::collections::BTreeMap::new();
-                for (_k, v) in &predicted {
+                for v in predicted.values() {
                     if let Some(ref fk) = v.function_key {
                         fk_index.insert(fk.clone(), v.clone());
                     }
@@ -421,20 +444,19 @@ fn merged_function_routes(
                 // Enrich user-provided keys: if url empty, try to fill from predicted via function_key
                 let mut fn_routes = inv.fn_routes.clone();
                 for (_k, v) in fn_routes.iter_mut() {
-                    if v.url.is_empty() {
-                        if let Some(ref fk) = v.function_key {
-                            if let Some(pred) = fk_index.get(fk) {
-                                v.url = pred.url.clone();
-                                if v.stateless.is_none() {
-                                    v.stateless = pred.stateless;
-                                }
-                                if v.standby.is_none() {
-                                    v.standby = pred.standby;
-                                }
-                                if v.active_group.is_empty() {
-                                    v.active_group = pred.active_group.clone();
-                                }
-                            }
+                    if v.url.is_empty()
+                        && let Some(ref fk) = v.function_key
+                        && let Some(pred) = fk_index.get(fk)
+                    {
+                        v.url = pred.url.clone();
+                        if v.stateless.is_none() {
+                            v.stateless = pred.stateless;
+                        }
+                        if v.standby.is_none() {
+                            v.standby = pred.standby;
+                        }
+                        if v.active_group.is_empty() {
+                            v.active_group = pred.active_group.clone();
                         }
                     }
                 }

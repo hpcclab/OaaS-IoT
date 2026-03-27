@@ -1,0 +1,35 @@
+[package]
+name = "oprc-netsim"
+description = "Network simulation (partition & latency injection) for OaaS environments."
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+default = []
+# Axum REST debug handlers (used by oprc-dev-server)
+http = ["dep:axum", "dep:http"]
+# ZRPC control protocol types + helpers (used by oprc-router & oprc-pm)
+zrpc = ["dep:oprc-zrpc", "dep:postcard"]
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["macros", "signal", "rt-multi-thread", "net", "io-util", "sync", "time"] }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+
+# Optional: Axum handlers for debug REST API
+axum = { workspace = true, optional = true }
+http = { workspace = true, optional = true }
+
+# Optional: ZRPC protocol types
+oprc-zrpc = { workspace = true, optional = true, features = ["postcard"] }
+postcard = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
