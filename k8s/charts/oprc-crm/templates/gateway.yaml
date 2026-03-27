@@ -89,7 +89,7 @@ spec:
             {{- end }}
             # Zenoh config to talk to router service
             - name: OPRC_ZENOH_MODE
-              value: "peer"
+              value: '{{default "peer" .Values.gateway.env.zenoh_mode }}'
             - name: OPRC_ZENOH_PEERS
               value: {{ printf "tcp/%s-router:%d" (include "oprc-crm.fullname" .) (int (default 17447 .Values.router.zenoh.port)) | quote }}
             {{- $zp := (default 17447 .Values.router.zenoh.port) }}

@@ -20,12 +20,17 @@ classes:
       - name: clear
         function_key: pixel-canvas-wasm
       - name: golStep
-        function_key: pixel-canvas-wasm
+        function_key: pixel-canvas-gol-wasm
 functions:
   - key: pixel-canvas-wasm
     function_type: WASM
     provision_config:
       wasm_module_url: "oci://ghcr.io/pawissanutt/oaas-rs/pixel-canvas-wasm:dev"
+      wasm_fuel: 1000000000000
+  - key: pixel-canvas-gol-wasm
+    function_type: WASM
+    provision_config:
+      wasm_module_url: "oci://ghcr.io/pawissanutt/oaas-rs/pixel-canvas-gol-wasm:dev"
       wasm_fuel: 1000000000000
 
 deployments: 
@@ -39,4 +44,4 @@ deployments:
       - oaas-1
       - oaas-2
     odgm:
-      log: debug
+      log: info

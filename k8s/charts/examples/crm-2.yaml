@@ -55,6 +55,7 @@ gateway:
     maxPayloadBytes: 4194304
     retryAttempts: 0
     wsEnabled: true
+    zenoh_mode: client
 
 # Scope CRM-2 to namespace oaas-2 and use it for default operations
 config:

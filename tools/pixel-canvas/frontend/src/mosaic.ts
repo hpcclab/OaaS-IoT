@@ -31,8 +31,7 @@ export class PresenterMosaic {
   private readonly dirtyMaps = new Map<string, Set<string>>();
   private readonly flushTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-  /** Per-tile last received object version — key: "x:y". Used for WS gap detection. */
-  private readonly tileVersions = new Map<string, number>();
+
 
   /** GoL auto-run state */
   private golRunning = false;
@@ -176,26 +175,6 @@ export class PresenterMosaic {
       const x = parseInt(m[1], 10);
       const y = parseInt(m[2], 10);
       if (x >= this.cols || y >= this.rows) return;
-
-      const vk = `${x}:${y}`;
-      const last = this.tileVersions.get(vk);
-
-      // Gap detection: if the server-side version jumped by more than 1 we
-      // missed at least one event (server queue overflow under heavy load).
-      // Re-fetch this single tile to reconcile, then apply no further delta
-      // — the fetch result is already authoritative.
-      if (evt.version !== undefined && last !== undefined && evt.version > last + 1) {
-        if (evt.version !== undefined) this.tileVersions.set(vk, evt.version);
-        fetchCanvas(this.gatewayBase, x, y, this.opts).then((result) => {
-          if (!result.ok) return;
-          this.pixelMaps[x][y] = result.pixels;
-          const el = this.canvasEl(x, y);
-          if (el) renderPixels(el, result.pixels, this.cellSize);
-        });
-        return;
-      }
-
-      if (evt.version !== undefined) this.tileVersions.set(vk, evt.version);
 
       const pixels = this.pixelMaps[x][y];
       for (const change of evt.changes) {

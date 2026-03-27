@@ -220,36 +220,26 @@ export class AudienceCanvas {
   }
 
   /**
-   * Handle an incoming WS event.  If all changes carry inline values we
-   * apply the deltas directly (no HTTP round-trip).  Otherwise we fall back
-   * to a full fetchAndRender.
+   * Handle an incoming WS event.  Apply inline change values directly
+   * (no HTTP round-trip).  Changes without an inline value are skipped —
+   * the canvas stays at its last known state for those keys.
    */
   private handleWsEvent(evt: WsEvent): void {
-    let allHaveValues = true;
     for (const change of evt.changes) {
       if (change.key.startsWith("_")) continue;
       if (change.action === "delete") {
-        // Deletes never carry a value — apply directly
         if (!this.dirty.has(change.key)) {
           this.pixels.delete(change.key);
         }
         continue;
       }
       const color = decodeChangeValue(change);
-      if (color !== null) {
-        if (!this.dirty.has(change.key)) {
-          this.pixels.set(change.key, color);
-        }
-      } else {
-        allHaveValues = false;
+      if (color !== null && !this.dirty.has(change.key)) {
+        this.pixels.set(change.key, color);
       }
     }
-    if (allHaveValues) {
-      this.render();
-      this.setStatus(true, "synced");
-    } else {
-      this.fetchAndRender();
-    }
+    this.render();
+    this.setStatus(true, "synced");
   }
 
   destroy(): void {

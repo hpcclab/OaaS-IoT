@@ -31,7 +31,10 @@ pub struct OClassDeployment {
     pub nfr_requirements: NfrRequirements,
     /// Per-environment template overrides. Key = environment/cluster name,
     /// Value = template name or alias. Highest precedence for that env.
-    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "std::collections::HashMap::is_empty"
+    )]
     pub env_templates: HashMap<String, String>,
     #[validate(nested)]
     #[serde(default)]
@@ -52,7 +55,9 @@ pub struct OClassDeployment {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Validate, JsonSchema)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Validate, JsonSchema,
+)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
 pub struct FunctionDeploymentSpec {
@@ -71,7 +76,10 @@ pub struct FunctionDeploymentSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provision_config: Option<crate::nfr::ProvisionConfig>,
     /// Arbitrary config key/value pairs from package metadata (injected as ENV to runtimes)
-    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "std::collections::HashMap::is_empty"
+    )]
     pub config: std::collections::HashMap<String, String>,
 }
 
@@ -108,7 +116,6 @@ pub struct DeploymentFilter {
     pub condition: Option<DeploymentCondition>,
 }
 
-
 /// Concrete infrastructure configuration for a specific deployment instance.
 ///
 /// This is the **per-deployment, low-level** counterpart to `OClass.options`:
@@ -126,7 +133,9 @@ pub struct DeploymentFilter {
 /// users should express their intent via `OClassDeployment.nfr_requirements`
 /// (e.g., `consistency = STRONG`) and let the PM derive the appropriate shard
 /// type during deployment scheduling.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Validate, Default)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Validate, Default,
+)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
 pub struct OdgmDataSpec {
@@ -164,9 +173,14 @@ pub struct OdgmDataSpec {
     /// - `enable_metrics` — collect shard-level metrics (default "true")
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub options: HashMap<String, String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zenoh_mode: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default, JsonSchema)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Default, JsonSchema,
+)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
 pub struct DeploymentStatusSummary {

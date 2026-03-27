@@ -195,15 +195,14 @@ pub fn create_deployment_units_for_env(
         //   class.options              → base options (semantic / class-invariant behavior)
         //   deployment.odgm.options    → overlay (per-deployment capacity/perf tuning; wins on conflict)
         //   consistency_model          → derives shard_type and invoke_only_primary automatically
-        let consistency = class
-            .state_spec
-            .as_ref()
-            .map(|s| &s.consistency_model);
+        let consistency =
+            class.state_spec.as_ref().map(|s| &s.consistency_model);
         let is_strong = matches!(consistency, Some(ConsistencyModel::Strong));
 
         // Build merged options: class first, then deployment overrides on top.
         let mut merged_options = class.options.clone();
-        merged_options.extend(o.options.iter().map(|(k, v)| (k.clone(), v.clone())));
+        merged_options
+            .extend(o.options.iter().map(|(k, v)| (k.clone(), v.clone())));
         // Inject invoke_only_primary derived from consistency model (unless the
         // user explicitly set it in deployment options, which takes precedence above).
         if !merged_options.contains_key("invoke_only_primary") {
@@ -237,6 +236,7 @@ pub fn create_deployment_units_for_env(
             env_node_ids: env_map,
             odgm_node_id: ids_for_env.first().cloned(),
             collection_assignments,
+            zenoh_mode: o.zenoh_mode.clone(),
         }
     });
 

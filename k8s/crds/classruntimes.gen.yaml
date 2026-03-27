@@ -292,6 +292,9 @@ spec:
                     description: Shard type (e.g., "mst", "raft", etc.) default "mst"
                     nullable: true
                     type: string
+                  zenoh_mode:
+                    nullable: true
+                    type: string
                 type: object
               package_class_key:
                 description: Class key for reference

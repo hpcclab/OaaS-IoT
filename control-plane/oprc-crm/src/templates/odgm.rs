@@ -278,9 +278,16 @@ pub fn build_odgm_resources(
 
         if let Some(router_name) = ctx.router_service_name.as_ref() {
             let router_port = ctx.router_service_port.unwrap_or(17447);
+            let zenoh_mode = ctx
+                .spec
+                .odgm_config
+                .as_ref()
+                .and_then(|c| c.zenoh_mode.as_ref())
+                .map(|s| s.as_str())
+                .unwrap_or("peer");
             env.push(EnvVar {
                 name: "OPRC_ZENOH_MODE".into(),
-                value: Some("peer".into()),
+                value: Some(zenoh_mode.into()),
                 ..Default::default()
             });
             env.push(EnvVar {
@@ -439,18 +446,19 @@ fn merged_function_routes(
                 for (_k, v) in fn_routes.iter_mut() {
                     if v.url.is_empty()
                         && let Some(ref fk) = v.function_key
-                            && let Some(pred) = fk_index.get(fk) {
-                                v.url = pred.url.clone();
-                                if v.stateless.is_none() {
-                                    v.stateless = pred.stateless;
-                                }
-                                if v.standby.is_none() {
-                                    v.standby = pred.standby;
-                                }
-                                if v.active_group.is_empty() {
-                                    v.active_group = pred.active_group.clone();
-                                }
-                            }
+                        && let Some(pred) = fk_index.get(fk)
+                    {
+                        v.url = pred.url.clone();
+                        if v.stateless.is_none() {
+                            v.stateless = pred.stateless;
+                        }
+                        if v.standby.is_none() {
+                            v.standby = pred.standby;
+                        }
+                        if v.active_group.is_empty() {
+                            v.active_group = pred.active_group.clone();
+                        }
+                    }
                 }
                 // Also add any predicted keys that are missing
                 for (k, v) in predicted.into_iter() {
