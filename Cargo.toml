@@ -23,6 +23,7 @@ members = [
     "tools/oprc-dev-server",
     "tests/system_e2e",
     "tests/wasm-guest-echo",
+    "tools/pixel-canvas/wasm-guest-rs",
 ]
 
 default-members = [

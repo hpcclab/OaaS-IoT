@@ -73,6 +73,7 @@ push-compiler: build-compiler
 
 build-wasm-guest:
     cargo build -p wasm-guest-echo --target wasm32-wasip2 --release
+    cargo build -p pixel-canvas-wasm-rs --target wasm32-wasip2 --release
     cd tools/oprc-compiler && npx tsx scripts/build-bench-guest.ts
 
 # Defaults from environment or hardcoded fallback
