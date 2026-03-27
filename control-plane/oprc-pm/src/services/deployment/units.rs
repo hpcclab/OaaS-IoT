@@ -211,6 +211,29 @@ pub fn create_deployment_units_for_env(
                 if is_strong { "true" } else { "false" }.into(),
             );
         }
+        // Inject storage_backend/storage_path when state_spec.persistent == true
+        // (unless the user already explicitly set storage_backend in options).
+        if !merged_options.contains_key("storage_backend") {
+            let is_persistent = class
+                .state_spec
+                .as_ref()
+                .map(|s| s.persistent)
+                .unwrap_or(false);
+            if is_persistent {
+                merged_options.insert("storage_backend".into(), "fjall".into());
+                if !merged_options.contains_key("storage_path") {
+                    // Default data directory: /data/odgm/{package}.{class}
+                    let col_name =
+                        o.collections.first().cloned().unwrap_or_else(|| {
+                            format!("{}.{}", deployment.package_name, class.key)
+                        });
+                    merged_options.insert(
+                        "storage_path".into(),
+                        format!("/data/odgm/{}", col_name),
+                    );
+                }
+            }
+        }
 
         // Derive shard_type from consistency model when not explicitly overridden.
         let shard_type = o.shard_type.clone().or_else(|| {

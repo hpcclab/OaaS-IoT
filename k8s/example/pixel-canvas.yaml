@@ -46,3 +46,6 @@ deployments:
     odgm:
       log: info
       zenoh_mode: client
+      # options:
+      #   storage_backend: fjall
+      #   storage_path: ./target/dev

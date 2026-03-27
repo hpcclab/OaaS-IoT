@@ -554,6 +554,36 @@ impl ShardConstructors
 // Dynamic dispatch helper (for runtime shard type selection)
 // ============================================================================
 
+/// Open a storage backend based on the `storage_backend` and `storage_path`
+/// keys in `metadata.options`. Falls back to in-memory SkipList when unset.
+///
+/// For Fjall, the shard ID is appended to the base path so that each shard
+/// gets its own exclusive database directory (fjall holds a file lock per
+/// directory and will return `Locked` if two shards share a path).
+///
+/// Recognised `storage_backend` values: `"fjall"`, `"memory"` (default).
+fn open_storage_from_options(
+    options: &std::collections::HashMap<String, String>,
+    shard_id: u64,
+) -> Result<AnyStorage, ShardError> {
+    match options.get("storage_backend").map(|s| s.as_str()) {
+        Some("fjall") => {
+            let base = options
+                .get("storage_path")
+                .map(|s| s.as_str())
+                .unwrap_or("/data/odgm/default");
+            // Each shard owns a unique sub-directory to avoid the fjall file lock.
+            let path = format!("{}/{}", base.trim_end_matches('/'), shard_id);
+            StorageConfig::fjall(path)
+                .open_any()
+                .map_err(ShardError::StorageError)
+        }
+        _ => StorageConfig::skiplist()
+            .open_any()
+            .map_err(ShardError::StorageError),
+    }
+}
+
 /// Create a boxed shard based on metadata's `shard_type` field.
 ///
 /// This is the only place where we need dynamic dispatch - when the shard type
@@ -596,6 +626,10 @@ pub async fn create_shard_dynamic_with_pipeline(
         builder
     }
 
+    // Open storage according to metadata options (storage_backend / storage_path).
+    // Defaults to in-memory SkipList when not set.
+    let storage = open_storage_from_options(&metadata.options, metadata.id)?;
+
     match shard_type.as_str() {
         "raft" => {
             info!("Creating Raft-replicated shard");
@@ -604,7 +638,7 @@ pub async fn create_shard_dynamic_with_pipeline(
                     .metadata(metadata)
                     .session(session)
                     .options(options)
-                    .memory_storage()?
+                    .storage(storage)
                     .raft_replication()
                     .await?,
                 event_pipeline_config,
@@ -623,7 +657,7 @@ pub async fn create_shard_dynamic_with_pipeline(
                     .metadata(metadata)
                     .session(session)
                     .options(options)
-                    .memory_storage()?
+                    .storage(storage)
                     .mst_replication()?,
                 event_pipeline_config,
             );
@@ -647,7 +681,7 @@ pub async fn create_shard_dynamic_with_pipeline(
                     .metadata(metadata)
                     .session(session)
                     .options(options)
-                    .memory_storage()?
+                    .storage(storage)
                     .no_replication(),
                 event_pipeline_config,
             );
