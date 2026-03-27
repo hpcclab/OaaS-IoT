@@ -27,6 +27,8 @@ pub struct AppState {
     pub artifact_store: Option<Arc<dyn ArtifactStore>>,
     pub source_store: Option<Arc<dyn SourceStore>>,
     pub script_service: Option<Arc<ScriptService>>,
+    #[cfg(feature = "network-sim")]
+    pub netsim_manager: Option<Arc<crate::services::netsim::NetsimManager>>,
 }
 
 pub struct ApiServer {
@@ -115,6 +117,8 @@ impl ApiServer {
             artifact_store,
             source_store,
             script_service,
+            #[cfg(feature = "network-sim")]
+            netsim_manager: None,
         };
 
         let app = Self::build_router(
@@ -236,6 +240,18 @@ impl ApiServer {
         axum::serve(listener, self.app).await?;
 
         Ok(())
+    }
+
+    /// Merge additional routes into this server's router.
+    #[cfg(feature = "network-sim")]
+    pub fn merge_netsim(
+        mut self,
+        manager: Arc<crate::services::netsim::NetsimManager>,
+    ) -> Self {
+        let netsim_routes =
+            crate::api::handlers::network_sim::build_netsim_api(manager);
+        self.app = self.app.merge(netsim_routes);
+        self
     }
 
     /// Consume and return the underlying Axum Router so callers can serve it themselves

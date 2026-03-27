@@ -183,6 +183,16 @@ config:
     # e.g., "http://oaas-compiler-oprc-compiler:3000"
     url: ""
 
+  # Network simulation configuration
+  # Requires the PM binary to be built with the `network-sim` feature.
+  networkSim:
+    enabled: false
+    # Comma-separated environment names (must match router envNames)
+    envs: ""
+    # Zenoh peer endpoints for the PM control session
+    # e.g., "tcp/cloud-router:17447,tcp/edge-router:17447"
+    zenohPeers: ""
+
 # Embedded etcd (CoreOS image) managed by this chart
 embeddedEtcd:
   enabled: false

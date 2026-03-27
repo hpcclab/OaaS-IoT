@@ -83,7 +83,8 @@ pub async fn build_api_server_from_env() -> Result<ApiServer> {
     // Server
     let server_config = config.server();
     let gateway_config = config.gateway();
-    Ok(ApiServer::with_all(
+    #[allow(unused_mut)]
+    let mut server = ApiServer::with_all(
         package_service,
         deployment_service,
         crm_manager,
@@ -92,5 +93,55 @@ pub async fn build_api_server_from_env() -> Result<ApiServer> {
         artifact_store,
         source_store,
         script_service,
-    ))
+    );
+
+    // Network simulation (optional — requires feature + OPRC_NETSIM_ENABLED)
+    #[cfg(feature = "network-sim")]
+    {
+        server = setup_netsim(server).await?;
+    }
+
+    Ok(server)
+}
+
+/// Conditionally wire up network simulation if `OPRC_NETSIM_ENABLED=true`.
+///
+/// Reads env vars:
+/// - `OPRC_NETSIM_ENABLED` — `"true"` to activate
+/// - `OPRC_NETSIM_ENVS` — comma-separated environment names (e.g. `"cloud,edge"`)
+/// - `OPRC_ZENOH_PEERS` — Zenoh peer endpoints for the control session
+#[cfg(feature = "network-sim")]
+async fn setup_netsim(server: ApiServer) -> Result<ApiServer> {
+    let enabled = std::env::var("OPRC_NETSIM_ENABLED")
+        .unwrap_or_default()
+        .eq_ignore_ascii_case("true");
+    if !enabled {
+        return Ok(server);
+    }
+
+    let raw_envs = std::env::var("OPRC_NETSIM_ENVS").unwrap_or_default();
+    let env_names: Vec<String> = raw_envs
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if env_names.is_empty() {
+        tracing::warn!("OPRC_NETSIM_ENABLED=true but OPRC_NETSIM_ENVS is empty");
+        return Ok(server);
+    }
+
+    info!(envs = ?env_names, "Setting up network simulation control");
+
+    // Open a Zenoh session for ZRPC to the routers.
+    use envconfig::Envconfig;
+    let z_conf = oprc_zenoh::OprcZenohConfig::init_from_env()?;
+    let session: zenoh::Session = zenoh::open(z_conf.create_zenoh()).await.map_err(|e| {
+        anyhow::anyhow!("Failed to open Zenoh session for netsim: {e}")
+    })?;
+
+    let manager = Arc::new(
+        crate::services::netsim::NetsimManager::new(session, &env_names).await?,
+    );
+
+    Ok(server.merge_netsim(manager))
 }

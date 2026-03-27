@@ -4059,6 +4059,7 @@ dependencies = [
  "oprc-gateway",
  "oprc-grpc",
  "oprc-models",
+ "oprc-netsim",
  "oprc-odgm",
  "oprc-zenoh",
  "rust-embed",
@@ -4192,6 +4193,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "oprc-netsim"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "http",
+ "oprc-zrpc",
+ "postcard",
+ "serde",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "oprc-observability"
 version = "0.1.0"
 dependencies = [
@@ -4283,9 +4300,11 @@ dependencies = [
  "oprc-crm",
  "oprc-grpc",
  "oprc-models",
+ "oprc-netsim",
  "oprc-observability",
  "oprc-test-utils",
  "oprc-zenoh",
+ "oprc-zrpc",
  "rand 0.9.2",
  "reqwest 0.13.2",
  "serde",
@@ -4313,9 +4332,13 @@ dependencies = [
 name = "oprc-router"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "async-trait",
  "envconfig",
  "num_cpus",
+ "oprc-netsim",
  "oprc-zenoh",
+ "oprc-zrpc",
  "tokio",
  "tracing",
  "tracing-subscriber",

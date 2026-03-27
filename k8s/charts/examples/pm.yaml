@@ -78,6 +78,11 @@ embeddedEtcd:
     client: 2379
     peer: 2380
 
+  networkSim:
+    enabled: true
+    envs: "oaas-1,oaas-2"
+    zenohPeers: "tcp/oaas-crm-1-oprc-crm-router.oaas-1.svc.cluster.local:17447,tcp/oaas-crm-2-oprc-crm-router.oaas-2.svc.cluster.local:17447"
+
 otel:
   enabled: true
   logsEnabled: true

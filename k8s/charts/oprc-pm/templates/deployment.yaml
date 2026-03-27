@@ -60,6 +60,20 @@ spec:
               value: {{ .Values.otel.samplerArg | default "1.0" | quote }}
             {{- end }}
             {{- end }}
+            {{- if .Values.config.networkSim }}
+            {{- if .Values.config.networkSim.enabled }}
+            - name: OPRC_NETSIM_ENABLED
+              value: "true"
+            {{- if .Values.config.networkSim.envs }}
+            - name: OPRC_NETSIM_ENVS
+              value: {{ .Values.config.networkSim.envs | quote }}
+            {{- end }}
+            {{- if .Values.config.networkSim.zenohPeers }}
+            - name: OPRC_ZENOH_PEERS
+              value: {{ .Values.config.networkSim.zenohPeers | quote }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /health

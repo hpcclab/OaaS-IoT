@@ -11,6 +11,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::routing::get;
 use oprc_dev_server::network_sim::NetworkSimState;
+use oprc_netsim::LinkChecker;
 use tower::ServiceExt;
 
 /// Build a stub gateway router that returns a known JSON body,
@@ -161,7 +162,7 @@ async fn pairwise_partition_and_heal() {
         oprc_dev_server::network_sim::build_debug_api(net_state.clone());
 
     // Initially connected
-    assert!(net_state.is_link_active("edge", "cloud").await);
+    assert!(net_state.is_active("edge", "cloud").await);
 
     // Partition edge↔cloud
     let resp = debug_api
@@ -176,7 +177,7 @@ async fn pairwise_partition_and_heal() {
         .await
         .unwrap();
     assert!(resp.status().is_success());
-    assert!(!net_state.is_link_active("edge", "cloud").await);
+    assert!(!net_state.is_active("edge", "cloud").await);
 
     // Heal edge↔cloud
     let resp = debug_api
@@ -191,7 +192,7 @@ async fn pairwise_partition_and_heal() {
         .await
         .unwrap();
     assert!(resp.status().is_success());
-    assert!(net_state.is_link_active("edge", "cloud").await);
+    assert!(net_state.is_active("edge", "cloud").await);
 }
 
 // -----------------------------------------------------------------------

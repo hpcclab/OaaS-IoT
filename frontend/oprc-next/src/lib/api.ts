@@ -324,14 +324,14 @@ export interface BulkActionResponse {
 }
 
 export async function fetchNetworkState(): Promise<NetworkOverview> {
-    const res = await fetch(`${API_BASE}/api/debug/network`);
+    const res = await fetch(`${API_V1}/network-sim`);
     await throwIfNotOk(res, "Fetch network state");
     return await res.json();
 }
 
 /** Partition a single link between two environments. */
 export async function partitionLink(envA: string, envB: string, latencyMs?: number): Promise<LinkActionResponse> {
-    const res = await fetch(`${API_BASE}/api/debug/network/${encodeURIComponent(envA)}/${encodeURIComponent(envB)}/partition`, {
+    const res = await fetch(`${API_V1}/network-sim/${encodeURIComponent(envA)}/${encodeURIComponent(envB)}/partition`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ latency_ms: latencyMs ?? null }),
@@ -342,7 +342,7 @@ export async function partitionLink(envA: string, envB: string, latencyMs?: numb
 
 /** Set latency on a link without changing connectivity. */
 export async function setLinkLatency(envA: string, envB: string, latencyMs: number): Promise<LinkActionResponse> {
-    const res = await fetch(`${API_BASE}/api/debug/network/${encodeURIComponent(envA)}/${encodeURIComponent(envB)}/latency`, {
+    const res = await fetch(`${API_V1}/network-sim/${encodeURIComponent(envA)}/${encodeURIComponent(envB)}/latency`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ latency_ms: latencyMs }),
@@ -353,7 +353,7 @@ export async function setLinkLatency(envA: string, envB: string, latencyMs: numb
 
 /** Heal a single link between two environments. */
 export async function healLink(envA: string, envB: string): Promise<LinkActionResponse> {
-    const res = await fetch(`${API_BASE}/api/debug/network/${encodeURIComponent(envA)}/${encodeURIComponent(envB)}/heal`, {
+    const res = await fetch(`${API_V1}/network-sim/${encodeURIComponent(envA)}/${encodeURIComponent(envB)}/heal`, {
         method: "POST",
     });
     await throwIfNotOk(res, "Heal link");
@@ -362,7 +362,7 @@ export async function healLink(envA: string, envB: string): Promise<LinkActionRe
 
 /** Partition an environment from ALL others. */
 export async function partitionEnv(env: string, latencyMs?: number): Promise<EnvActionResponse> {
-    const res = await fetch(`${API_BASE}/api/debug/network/${encodeURIComponent(env)}/partition`, {
+    const res = await fetch(`${API_V1}/network-sim/${encodeURIComponent(env)}/partition`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ latency_ms: latencyMs ?? null }),
@@ -373,7 +373,7 @@ export async function partitionEnv(env: string, latencyMs?: number): Promise<Env
 
 /** Heal an environment back to ALL others. */
 export async function healEnv(env: string): Promise<EnvActionResponse> {
-    const res = await fetch(`${API_BASE}/api/debug/network/${encodeURIComponent(env)}/heal`, {
+    const res = await fetch(`${API_V1}/network-sim/${encodeURIComponent(env)}/heal`, {
         method: "POST",
     });
     await throwIfNotOk(res, "Heal environment");
@@ -381,7 +381,7 @@ export async function healEnv(env: string): Promise<EnvActionResponse> {
 }
 
 export async function partitionAll(): Promise<BulkActionResponse> {
-    const res = await fetch(`${API_BASE}/api/debug/network/partition-all`, {
+    const res = await fetch(`${API_V1}/network-sim/partition-all`, {
         method: "POST",
     });
     await throwIfNotOk(res, "Partition all environments");
@@ -389,7 +389,7 @@ export async function partitionAll(): Promise<BulkActionResponse> {
 }
 
 export async function healAll(): Promise<BulkActionResponse> {
-    const res = await fetch(`${API_BASE}/api/debug/network/heal-all`, {
+    const res = await fetch(`${API_V1}/network-sim/heal-all`, {
         method: "POST",
     });
     await throwIfNotOk(res, "Heal all environments");

@@ -38,6 +38,12 @@ nanoid.workspace = true
 validator.workspace = true
 sha2.workspace = true
 
+# Optional: network simulation
+oprc-netsim = { workspace = true, features = ["zrpc"], optional = true }
+oprc-zrpc = { workspace = true, optional = true }
+zenoh = { workspace = true, optional = true }
+oprc-zenoh = { workspace = true, optional = true }
+
 [dev-dependencies]
 
 serial_test.workspace = true
@@ -63,3 +69,4 @@ jaeger = []
 etcd = ["oprc-cp-storage/etcd"]
 etcd-tls = ["oprc-cp-storage/etcd-tls"]
 testcontainers = []
+network-sim = ["dep:oprc-netsim", "dep:oprc-zrpc", "dep:zenoh", "dep:oprc-zenoh"]

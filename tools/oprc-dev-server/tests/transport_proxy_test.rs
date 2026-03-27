@@ -10,6 +10,7 @@
 //! Each test creates isolated Zenoh sessions with `auto_connect = false` and
 //! multicast/gossip disabled so they only communicate through the proxy.
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use oprc_dev_server::network_sim::NetworkSimState;
@@ -55,11 +56,11 @@ async fn setup_pair(
     // Small delay to ensure the listener is ready.
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    let proxy = TransportProxy::start(
+    let proxy = TransportProxy::start_local(
         "cloud".into(),
         "edge".into(),
         port_a,
-        net_state.clone(),
+        Arc::new(net_state.clone()),
     )
     .await
     .expect("start proxy");

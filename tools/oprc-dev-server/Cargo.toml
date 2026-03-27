@@ -20,6 +20,7 @@ http = { workspace = true }
 oprc-gateway = { path = "../../data-plane/oprc-gateway" }
 oprc-grpc = { workspace = true, features = ["util"] }
 oprc-models = { workspace = true }
+oprc-netsim = { workspace = true, features = ["http"] }
 oprc-odgm = { workspace = true, features = ["wasm"] }
 oprc-zenoh = { workspace = true }
 tokio-util = { workspace = true }

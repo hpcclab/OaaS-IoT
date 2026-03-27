@@ -11,6 +11,7 @@ members = [
     "commons/oprc-config",
     "commons/oprc-test-utils",
     "commons/oprc-zrpc",
+    "commons/oprc-netsim",
     "control-plane/oprc-pm",
     "control-plane/oprc-crm",
     "data-plane/oprc-gateway",
@@ -58,6 +59,7 @@ oprc-odgm = { path = "data-plane/oprc-odgm" }
 oprc-test-utils = { path = "commons/oprc-test-utils" }
 oprc-zenoh = { path = "commons/oprc-zenoh" }
 oprc-zrpc = { path = "commons/oprc-zrpc" }
+oprc-netsim = { path = "commons/oprc-netsim" }
 oprc-wasm = { path = "data-plane/oprc-wasm" }
 oprc-dev-server = { path = "tools/oprc-dev-server" }
 anyhow = "1.0"

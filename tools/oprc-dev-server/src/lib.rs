@@ -11,6 +11,7 @@ use std::time::Duration;
 use axum::Router;
 use config::{DevServerConfig, create_requests_for_env, extract_env_names};
 use network_sim::NetworkSimState;
+use oprc_netsim::LinkChecker;
 use oprc_odgm::{EventPipelineConfig, ObjectDataGridManager, OdgmConfig};
 use oprc_zenoh::pool::Pool;
 use std::time::Duration as StdDuration;
@@ -186,13 +187,14 @@ async fn start_environments_with_net(
         env_names.iter().map(|_| Vec::new()).collect();
 
     if multi_env {
+        let checker: Arc<dyn LinkChecker> = Arc::new(net_state.clone());
         for i in 0..env_names.len() {
             for j in (i + 1)..env_names.len() {
-                let proxy = TransportProxy::start(
+                let proxy = TransportProxy::start_local(
                     env_names[i].clone(),
                     env_names[j].clone(),
                     listen_ports[i],
-                    net_state.clone(),
+                    checker.clone(),
                 )
                 .await?;
                 // Env j connects to this proxy to reach env i.
@@ -351,7 +353,8 @@ pub async fn build_dev_router(
 
     // Debug network API (always available, even in single-env mode)
     let debug_api = network_sim::build_debug_api(net_state.clone());
-    router = router.merge(debug_api);
+    let v1_api = network_sim::build_v1_api(net_state.clone());
+    router = router.merge(debug_api).merge(v1_api);
 
     // Stub PM API for frontend (/api/v1/deployments, etc.)
     // Include gateway port mapping so the frontend can discover per-env URLs.

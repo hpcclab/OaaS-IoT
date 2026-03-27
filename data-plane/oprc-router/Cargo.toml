@@ -7,6 +7,10 @@ repository.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[features]
+default = ["network-sim"]
+network-sim = ["dep:oprc-netsim", "dep:oprc-zrpc", "dep:async-trait", "dep:anyhow"]
+
 [dependencies]
 envconfig = {workspace = true}
 tokio = { workspace = true, features = ["rt-multi-thread", "signal"] }
@@ -14,6 +18,11 @@ tracing = {workspace = true}
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 zenoh-config={workspace = true}
 zenoh = {workspace = true}
-# futures-util = {workspace = true}
 oprc-zenoh = {workspace = true}
 num_cpus = {workspace = true}
+
+# Optional: network simulation
+oprc-netsim = { workspace = true, features = ["zrpc"], optional = true }
+oprc-zrpc = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
+anyhow = { workspace = true, optional = true }

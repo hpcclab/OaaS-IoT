@@ -66,6 +66,20 @@ spec:
               value: {{ .Values.router.zenoh.gossipEnabled | default "true" | quote }}
             - name: OPRC_ZENOH_SCOUTING_MULTICAST_ENABLED
               value: {{ .Values.router.zenoh.scoutingMulticastEnabled | default "false" | quote }}
+            {{- if .Values.router.networkSim }}
+            {{- if .Values.router.networkSim.enabled }}
+            - name: OPRC_NETSIM_ENABLED
+              value: "true"
+            {{- if .Values.router.networkSim.envName }}
+            - name: OPRC_NETSIM_ENV_NAME
+              value: {{ .Values.router.networkSim.envName | quote }}
+            {{- end }}
+            {{- if .Values.router.networkSim.peers }}
+            - name: OPRC_NETSIM_PEERS
+              value: {{ .Values.router.networkSim.peers | quote }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
             {{- range $key, $value := .Values.router.extraEnv }}
             - name: {{ $key }}
               value: {{ $value | quote }}
