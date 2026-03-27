@@ -516,6 +516,20 @@ impl<
                     ..Default::default()
                 })
             }
+            crate::replication::Operation::Batch(operations) => {
+                for operation in operations {
+                    let batch_request =
+                        crate::replication::ShardRequest::from_operation(
+                            operation,
+                            request.source_node,
+                        );
+                    self.replicate_write(batch_request).await?;
+                }
+                Ok(ReplicationResponse {
+                    status: crate::replication::ResponseStatus::Applied,
+                    ..Default::default()
+                })
+            }
             _ => Err(ReplicationError::StorageError(
                 oprc_dp_storage::StorageError::invalid_operation(
                     "Expected write or delete operation",
