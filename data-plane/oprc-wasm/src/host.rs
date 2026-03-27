@@ -71,6 +71,15 @@ pub trait OdgmDataOps: Send + Sync {
         payload: Option<Vec<u8>>,
     ) -> Result<Option<Vec<u8>>, DataOpsError>;
 
+    /// Batch set multiple entries on an object.
+    async fn batch_set_values(
+        &self,
+        cls_id: &str,
+        partition_id: u32,
+        object_id: &str,
+        entries: Vec<(String, Vec<u8>)>,
+    ) -> Result<(), DataOpsError>;
+
     /// Get all entries of an object as key-value pairs.
     /// Returns None if the object doesn't exist.
     async fn get_all_entries(

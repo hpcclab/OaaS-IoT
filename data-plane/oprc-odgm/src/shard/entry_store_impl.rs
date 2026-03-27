@@ -556,36 +556,39 @@ where
             }
         }
 
-        // Write all entries (note: this is simplified - in production, we'd want
-        // to batch these into a single Raft log entry for true atomicity)
-        tracing::info!(
-            "Batch set entries: writing {} entries for {}",
-            values.len(),
-            normalized_id
-        );
+        // Batch all entry writes + metadata update into a single Raft log entry
+        // for atomicity and performance.
+        let mut ops: Vec<Operation> = Vec::with_capacity(values.len() + 1);
         for (key, value) in values.into_iter() {
             let storage_key = build_entry_key(normalized_id, &key);
-            // Encode each ObjectVal directly
             let value_bytes = postcard::to_allocvec(&value)
                 .map_err(|e| ShardError::SerializationError(e.to_string()))?;
 
-            let operation = Operation::Write(WriteOperation {
+            ops.push(Operation::Write(WriteOperation {
                 key: StorageValue::from(storage_key),
                 value: StorageValue::from(value_bytes),
                 ..Default::default()
-            });
-            let request = ShardRequest::from_operation(operation, 0); // TODO: Get proper node_id
-
-            self.replication
-                .replicate_write(request)
-                .await
-                .map_err(ShardError::from)?;
-
-            self.metrics.inc_entry_writes();
+            }));
         }
 
-        // Update metadata with new version
-        self.set_metadata(normalized_id, metadata).await?;
+        // Include metadata update in the same batch
+        let metadata_key = build_metadata_key(normalized_id);
+        let metadata_bytes = metadata.to_bytes();
+        ops.push(Operation::Write(WriteOperation {
+            key: StorageValue::from(metadata_key),
+            value: StorageValue::from(metadata_bytes),
+            ..Default::default()
+        }));
+
+        let request = ShardRequest::from_operation(Operation::Batch(ops), 0);
+        self.replication
+            .replicate_write(request)
+            .await
+            .map_err(ShardError::from)?;
+
+        self.metrics.inc_entry_writes_by(changed_keys.len() as u64);
+
+        // Metadata was already written as part of the batch above.
 
         debug!("Batch set completed with new version {}", new_version);
         if v2_mode {

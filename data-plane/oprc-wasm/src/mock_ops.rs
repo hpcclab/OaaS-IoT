@@ -123,6 +123,22 @@ impl OdgmDataOps for MockDataOps {
         Err(DataOpsError::Internal("Not implemented in mock".into()))
     }
 
+    async fn batch_set_values(
+        &self,
+        cls_id: &str,
+        _part: u32,
+        obj_id: &str,
+        entries: Vec<(String, Vec<u8>)>,
+    ) -> Result<(), DataOpsError> {
+        let mut guard = self.entries.write().await;
+        let k = (cls_id.to_string(), obj_id.to_string());
+        let fields = guard.entry(k).or_default();
+        for (key, val) in entries {
+            fields.insert(key, val);
+        }
+        Ok(())
+    }
+
     async fn get_all_entries(
         &self,
         cls_id: &str,

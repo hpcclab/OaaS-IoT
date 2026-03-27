@@ -365,19 +365,19 @@ impl object_context::HostObjectProxy for ObjectWasmHostState {
         let is_local = proxy.is_local;
 
         if is_local {
-            for entry in field_entries {
-                self.data_ops
-                    .set_value(
-                        &obj_ref.cls,
-                        obj_ref.partition_id,
-                        &obj_ref.object_id,
-                        &entry.key,
-                        entry.value,
-                    )
-                    .await
-                    .map_err(OdgmError::from)?;
-            }
-            Ok(())
+            let entries: Vec<(String, Vec<u8>)> = field_entries
+                .into_iter()
+                .map(|e| (e.key, e.value))
+                .collect();
+            self.data_ops
+                .batch_set_values(
+                    &obj_ref.cls,
+                    obj_ref.partition_id,
+                    &obj_ref.object_id,
+                    entries,
+                )
+                .await
+                .map_err(OdgmError::from)
         } else {
             let meta = ObjMeta {
                 cls_id: obj_ref.cls.clone(),

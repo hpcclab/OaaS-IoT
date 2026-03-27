@@ -43,6 +43,12 @@ impl ShardMetrics {
     }
 
     #[inline]
+    pub fn inc_entry_writes_by(&self, n: u64) {
+        self.entry_writes_total
+            .fetch_add(n, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[inline]
     pub fn inc_entry_deletes(&self) {
         self.entry_deletes_total
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);

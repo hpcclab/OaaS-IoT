@@ -5,6 +5,7 @@
 //! - [`ShardDataOpsFactory`]: implements `DataOpsFactory` to produce adapters per call
 //! - [`setup_wasm_offloader`]: detects `wasm://` routes and builds the WASM executor
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use oprc_wasm::adapter::{DataOpsFactory, WasmExecutorAdapter};
@@ -184,6 +185,32 @@ impl OdgmDataOps for ShardDataOpsAdapter {
                 e
             ))),
         }
+    }
+
+    async fn batch_set_values(
+        &self,
+        _cls_id: &str,
+        _partition_id: u32,
+        object_id: &str,
+        entries: Vec<(String, Vec<u8>)>,
+    ) -> Result<(), DataOpsError> {
+        let values: HashMap<String, ObjectVal> = entries
+            .into_iter()
+            .map(|(k, v)| {
+                (
+                    k,
+                    ObjectVal {
+                        data: v,
+                        r#type: oprc_grpc::ValType::Byte,
+                    },
+                )
+            })
+            .collect();
+        self.shard
+            .batch_set_entries_granular(object_id, values, None)
+            .await
+            .map(|_| ())
+            .map_err(shard_err_to_ops)
     }
 
     async fn get_all_entries(

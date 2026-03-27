@@ -7,7 +7,7 @@ classes:
       ws_event_include_values: "true"
       mst_sync_events: "true"
     state_spec:
-      consistency_model: READ_YOUR_WRITE
+      consistency_model: STRONG
     function_bindings:
       - name: paint
         function_key: pixel-canvas-wasm
@@ -45,3 +45,4 @@ deployments:
       - oaas-2
     odgm:
       log: info
+      zenoh_mode: client

@@ -37,7 +37,7 @@ router:
     tag: "dev"
     pullPolicy: Always
   networkSim:
-    enabled: true
+    enabled: false
     envName: "oaas-1"
     peers: "oaas-2=oaas-crm-2-oprc-crm-router.oaas-2.svc.cluster.local:17447"
   extraEnv:
