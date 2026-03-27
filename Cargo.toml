@@ -120,9 +120,9 @@ smallvec = { version = "1.15", features = ["serde"] }
 scc = { version = "3.6" }
 serial_test = "3.4"
 thiserror = "2.0"
-testcontainers = "0.27.1"
+testcontainers = "0.27"
 tokio = { version = "1.50", features = ["full"] }
-tokio-tungstenite = "0.28"
+tokio-tungstenite = "0.29"
 tokio-util = { version = "0.7.18" }
 tokio-stream = { version = "0.1" }
 tonic = "0.14"
@@ -138,7 +138,7 @@ tracing-opentelemetry = "0.32.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
 tempfile = "3.27"
-sha2 = "0.10"
+sha2 = "=0.10"
 test-log = { version = "0.2", features = ["trace"] }
 tokio-test = "0.4"
 validator = { version = "0.20", features = ["derive"] }
@@ -146,9 +146,9 @@ wiremock = "0.6"
 zenoh = { version = "=1.8" }
 zenoh-config = { version = "=1.8" }
 nanoid = "0.4"
-wasmtime = { version = "42.0.1", features = ["component-model", "async", "anyhow"] }
-wasmtime-wasi = { version = "42.0.1" }
-wasmtime-wasi-http = { version = "42.0.1" }
+wasmtime = { version = "=42.0", features = ["component-model", "async", "anyhow"] }
+wasmtime-wasi = { version = "=42.0" }
+wasmtime-wasi-http = { version = "=42.0" }
 
 # Additional dependencies found in individual packages
 byteorder = "1.5"
@@ -159,7 +159,7 @@ assert_cmd = "2.2"
 predicates = "3.1"
 
 # Kubernetes controller dependencies (shared)
-kube = { version = "3.0.1", default-features = false, features = [
+kube = { version = "3.1", default-features = false, features = [
     "client",
     "runtime",
     "derive",
@@ -179,7 +179,7 @@ wasm-bindgen-futures = "0.4"
 web-sys = "0.3"
 js-sys = "0.3"
 serde-wasm-bindgen = "0.6"
-gloo-timers = "0.3"
+gloo-timers = "0.4"
 wit-bindgen = "0.54"
 wat = "1.245"
 

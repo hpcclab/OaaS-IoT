@@ -133,7 +133,7 @@ fn deployment_to_request(
     // when there is no consistency declaration, since the in-process ODGM
     // does not need cluster replication.
     let consistency = cls.state_spec.as_ref().map(|s| &s.consistency_model);
-    let is_strong = matches!(consistency, Some(ConsistencyModel::Strong));
+
     let shard_type =
         odgm.and_then(|o| o.shard_type.clone()).unwrap_or_else(|| {
             match consistency {
