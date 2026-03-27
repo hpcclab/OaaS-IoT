@@ -220,6 +220,7 @@ pub struct OpenRaftReplicationLayer<A>
 where
     A: SnapshotCapableStorage + Clone + Send + Sync + 'static,
 {
+    #[allow(dead_code)]
     /// Node ID in the Raft cluster
     shard_id: u64,
 

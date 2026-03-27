@@ -45,7 +45,8 @@ deployments:
       - oaas-2
     odgm:
       log: info
-      zenoh_mode: client
-      # options:
+      zenoh_mode: peer
+      options:
+        invoke_only_primary: "false"
       #   storage_backend: fjall
       #   storage_path: ./target/dev
