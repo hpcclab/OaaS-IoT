@@ -25,13 +25,24 @@ function toWsUrl(httpBase: string): string {
 
 /**
  * Resolve the class API base URL and partition from an optional ClassConfig.
- * If cfg.classBase is provided it is used directly (trailing slash stripped);
- * otherwise the default path is built from the gateway base URL.
+ * If cfg.classBase is provided it is used (trailing slash stripped).
+ * A relative classBase (starting with "/") is combined with the gateway origin.
+ * Otherwise the default path is built from the gateway base URL.
  */
 function resolveClass(gatewayBase: string, cfg?: ClassConfig): { base: string; partition: number } {
-  const base = cfg?.classBase
-    ? cfg.classBase.replace(/\/$/, "")
-    : `${gatewayBase.replace(/\/$/, "")}/api/class/${CLASS_NAME}`;
+  let base: string;
+  if (cfg?.classBase) {
+    const cb = cfg.classBase.replace(/\/$/, "");
+    if (cb.startsWith("/")) {
+      // Relative path — prepend the gateway's origin
+      const origin = new URL(gatewayBase).origin;
+      base = `${origin}${cb}`;
+    } else {
+      base = cb;
+    }
+  } else {
+    base = `${gatewayBase.replace(/\/$/, "")}/api/class/${CLASS_NAME}`;
+  }
   const partition = cfg?.partition ?? PARTITION;
   return { base, partition };
 }

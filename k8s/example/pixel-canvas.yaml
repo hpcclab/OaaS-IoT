@@ -33,8 +33,10 @@ deployments:
     package_name: pixel-canvas
     class_key: pixel-canvas
     target_envs: 
-      - cloud
-      - edge1
-      - edge2
+      # - cloud
+      # - edge1
+      # - edge2
+      - oaas-1
+      - oaas-2
     odgm:
       log: debug
