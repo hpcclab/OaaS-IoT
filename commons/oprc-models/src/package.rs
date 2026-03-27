@@ -70,8 +70,6 @@ pub struct OClass {
     /// - `zenoh_event_locality` — Zenoh interest scoping ("any", "local", …)
     /// - `ws_event_include_values` — whether WebSocket events carry full values
     ///
-    /// **Note on `invoke_only_primary`**: do not set this manually; the PM
-    /// derives it automatically from `state_spec.consistency_model == STRONG`.
     ///
     /// For per-deployment capacity/performance tuning (`batch_size`,
     /// `timeout_ms`, pool sizes), use `OClassDeployment.odgm.options` instead.

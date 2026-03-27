@@ -155,8 +155,7 @@ Bootstrap collections at startup via ODGM_COLLECTION (JSON array of CreateCollec
     "replica_count": 2,
     "shard_type": "raft",
     "options": {
-      "invoke_only_primary": "true",
-      "mst_sync_interval": "5000"
+      "invoke_only_primary": "true"
     },
     "invocations": {
       "fn_routes": {

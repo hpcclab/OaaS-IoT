@@ -145,17 +145,10 @@ fn deployment_to_request(
         });
 
     // Merge options: class base + deployment overlay (deployment wins on conflict),
-    // then inject invoke_only_primary from consistency model if not set explicitly.
     let mut merged_options = cls.options.clone();
     if let Some(o) = odgm {
         merged_options
             .extend(o.options.iter().map(|(k, v)| (k.clone(), v.clone())));
-    }
-    if !merged_options.contains_key("invoke_only_primary") {
-        merged_options.insert(
-            "invoke_only_primary".into(),
-            if is_strong { "true" } else { "false" }.into(),
-        );
     }
 
     let invocations = build_invocations(cls, pkg);

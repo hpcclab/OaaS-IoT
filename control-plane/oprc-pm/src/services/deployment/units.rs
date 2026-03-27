@@ -194,23 +194,15 @@ pub fn create_deployment_units_for_env(
         // Three-source merge into OdgmConfig:
         //   class.options              → base options (semantic / class-invariant behavior)
         //   deployment.odgm.options    → overlay (per-deployment capacity/perf tuning; wins on conflict)
-        //   consistency_model          → derives shard_type and invoke_only_primary automatically
+        //   consistency_model          → derives shard_type automatically
         let consistency =
             class.state_spec.as_ref().map(|s| &s.consistency_model);
-        let is_strong = matches!(consistency, Some(ConsistencyModel::Strong));
 
         // Build merged options: class first, then deployment overrides on top.
         let mut merged_options = class.options.clone();
         merged_options
             .extend(o.options.iter().map(|(k, v)| (k.clone(), v.clone())));
-        // Inject invoke_only_primary derived from consistency model (unless the
-        // user explicitly set it in deployment options, which takes precedence above).
-        if !merged_options.contains_key("invoke_only_primary") {
-            merged_options.insert(
-                "invoke_only_primary".into(),
-                if is_strong { "true" } else { "false" }.into(),
-            );
-        }
+
         // Inject storage_backend/storage_path when state_spec.persistent == true
         // (unless the user already explicitly set storage_backend in options).
         if !merged_options.contains_key("storage_backend") {
